@@ -20,8 +20,8 @@ if ! awk -v v="$version" 'BEGIN { exit !(v + 0 >= 3.2) }'; then
 	exit 0
 fi
 
-jump_key="$(get_tmux_option "@ace-window-key" "a")"
-swap_key="$(get_tmux_option "@ace-window-swap-key" "A")"
+jump_key="$(get_tmux_option "@ace-window-key"  "o")"
+swap_key="$(get_tmux_option "@ace-window-swap-key" "O")"
 
 # prefix + <key>  -> jump to a pane;  prefix + <swap_key> -> swap with a pane.
 tmux bind-key "$jump_key" run-shell -b "$SCRIPTS_DIR/ace-window.sh select"
