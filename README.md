@@ -1,5 +1,9 @@
 # tmux
 
+## runbooks
+
+- [to-emacs](runbooks/to-emacs.md) — `prefix E`: full pane scrollback → Emacs buffer
+
 ## plugins
 
 

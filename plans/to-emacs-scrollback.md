@@ -1,6 +1,7 @@
 # to-emacs: a pane's full scrollback in an Emacs buffer
 
 Status: implemented, 2026-08-06. Repo: `~/.tmux` (submodule of the home dotfiles repo).
+Install / verify / troubleshoot: [the to-emacs runbook](../runbooks/to-emacs.md).
 
 ## Problem
 
