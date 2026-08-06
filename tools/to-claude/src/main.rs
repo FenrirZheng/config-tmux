@@ -292,6 +292,33 @@ fn announce(target: &str) {
     t::message(&format!("→ CLAUDE {target}"));
 }
 
+/// Also put the delivered bytes on the Wayland clipboard.
+///
+/// Sending to a Claude pane and having the text on hand for a browser or an
+/// issue tracker are not alternatives — the same grab is wanted in both places.
+/// `set-clipboard on` does not cover this: tmux's OSC 52 path does not reach
+/// wl-copy here (measured — a copy-pipe left the clipboard untouched), which is
+/// why the thumbs bindings in tmux.conf pipe to wl-copy explicitly too.
+///
+/// Best-effort by design: a machine without wl-copy (no Wayland, a plain tty)
+/// still delivers to the pane, which is the part the caller asked for.
+fn copy_to_clipboard(bytes: &[u8]) {
+    let Ok(mut child) = Command::new("wl-copy")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return;
+    };
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(bytes);
+    }
+    // wl-copy forks a clipboard-owner daemon and the parent exits immediately;
+    // waiting here reaps it rather than leaving a zombie behind the key binding.
+    let _ = child.wait();
+}
+
 // ---------------------------------------------------------------------------
 // Modes
 // ---------------------------------------------------------------------------
@@ -329,7 +356,12 @@ fn deliver_stdin(mode: Mode) -> i32 {
         }
         // Raw bytes, not the lossy string: the buffer round-trips whatever the
         // selection actually was.
-        Mode::Paste => send_paste(&target, &raw),
+        Mode::Paste => {
+            // copy-mode Y: the selection lands on the clipboard as well, so the
+            // same grab can be pasted outside tmux.
+            copy_to_clipboard(&raw);
+            send_paste(&target, &raw)
+        }
         Mode::Capture(_) => return fail("internal: capture routed to deliver_stdin"),
     };
 
@@ -373,6 +405,11 @@ fn capture(src: Option<String>) -> i32 {
     let Some(target) = resolve_target(mark_on_source, Some(&src)) else {
         return no_target();
     };
+
+    // The clipboard gets the captured OUTPUT, not the `@`-path that goes to the
+    // pane: the path is only meaningful to a Claude on this machine, whereas the
+    // text is what you would paste into an issue or a chat.
+    copy_to_clipboard(&body);
 
     let cwd = t::display(Some(&src), "#{pane_current_path}").unwrap_or_default();
     let line = capture_line(&cwd, &path.display().to_string());
