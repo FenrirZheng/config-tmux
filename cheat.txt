@@ -13,6 +13,7 @@
                prefix Space    thumbs: hints every path / URL on screen,
                                press its letter to copy (matches file.ext:123)
                prefix ]        paste tmux buffer
+               prefix E        open this pane's FULL scrollback in Emacs
 
   CLAUDE       prefix C        launch menu: split / window / popup / continue
                find & watch    / resume picker / project jump / pair-spawn

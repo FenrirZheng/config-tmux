@@ -83,6 +83,7 @@ in `talk send` too.
 | `cc-attend` | `prefix N` / `prefix B` | attention-jump |
 | `cc-fleet` | `prefix S` fzf picker | fleet-popup |
 | `to-claude` | `--ref` / `--type` / `--paste` / `capture` | capture-rail |
+| `to-emacs` | `<pane>` — full scrollback → Emacs daemon buffer | to-emacs-scrollback |
 | `cc-launch` | `resume` / `project` / `pair` pickers | launch-menu |
 | `cc-layout` | `snapshot` / `restore` | layout-resurrect |
 | `talk-fleet` | `role` / `bcast` / `collect` | talk-fleet-dispatch |
@@ -132,6 +133,7 @@ not expand.
 | `prefix T` | toggle the tape on this pane | cc-tape |
 | `prefix W` | live ticker popup | — (plain `tail -f`) |
 | `prefix e` | capture this pane's tail → `@`-file to Claude | to-claude |
+| `prefix E` | full scrollback of this pane → Emacs buffer (overrides spread-layout) | to-emacs |
 | `prefix M-s` | snapshot the layout | cc-layout |
 | `prefix m` / `M` | mark / unmark the Claude inbox (stock tmux) | to-claude |
 | copy-mode `Y` | send selection to Claude as one paste | to-claude |

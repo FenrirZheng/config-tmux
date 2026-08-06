@@ -157,6 +157,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "to-emacs"
+version = "0.1.0"
+dependencies = [
+ "tmuxlib",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"

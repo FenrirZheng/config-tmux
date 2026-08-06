@@ -9,6 +9,7 @@ members = [
     "cc-layout",
     "cc-launch",
     "to-claude",
+    "to-emacs",
     "talk-fleet",
 ]
 
