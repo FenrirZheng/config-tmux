@@ -1,0 +1,50 @@
+  TMUX CHEAT SHEET                       prefix = C-b      (q to close)
+  ─────────────────────────────────────────────────────────────────────
+
+  PANES        prefix "        split below            prefix %   split right
+               prefix o        jump to pane (ace: press the letter shown)
+               prefix O        swap with pane (ace)
+               prefix z        zoom / unzoom          prefix x   kill pane
+
+  WINDOWS      prefix c        new                    prefix ,   rename
+               prefix n / p    next / previous        prefix w   pick from tree
+
+  COPY & GRAB  prefix C-t      copy mode (also prefix [ ; leave with q)
+               prefix Space    thumbs: hints every path / URL on screen,
+                               press its letter to copy (matches file.ext:123)
+               prefix ]        paste tmux buffer
+
+  CLAUDE       prefix C        launch menu: split / window / popup / continue
+               find & watch    / resume picker / project jump / pair-spawn
+               prefix N        go to the Claude that needs you (marks origin)
+               prefix B        bounce back where you came from
+               prefix S        fleet picker: any Claude, any session + preview
+               prefix W        live ticker of this pane's Claude tool calls
+               prefix T        tape: record this pane past alt-screen (●REC)
+               prefix M-s      snapshot the layout (restore: cc-layout restore)
+
+  → CLAUDE     prefix m        mark a Claude pane as inbox (border ▶ CLAUDE)
+               send it stuff   prefix M clears the mark
+               prefix Space    then the hint in UPPERCASE: send that file:line
+                               as an @-ref (lowercase still copies as before)
+               copy-mode Y     send the selection as one paste
+               prefix e        send this pane's failure tail as an @-file
+               nothing here ever presses Enter — you type the question
+
+  BORDER       ● green done    ◐ yellow working    ✋ red needs your input
+               ▶ CLAUDE = inbox   ●REC = recording   [name] = talk-fleet role
+
+  OTHER        prefix P        popup shell in this pane's directory
+               prefix d        detach          prefix :   command prompt
+               prefix /        describe one key
+               prefix M-?      FULL key list (this sheet is the curated 10%)
+
+  ─────────────────────────────────────────────────────────────────────
+  ONE PREFIX PER LAYER — that is the whole keybinding policy:
+
+    keyd   physical remap only, no leader layer  (~/.config/keyd/default.conf)
+    tmux   C-b                                  (~/.tmux/tmux.conf)
+    emacs  C-c prefixes, plus <f5> = scenario hub, C-h B = search all keys
+
+  Adding a 4th namespace is the disease, not the cure.
+  Emacs side of this policy: ~/.emacs.d/lisp/init-keys.el

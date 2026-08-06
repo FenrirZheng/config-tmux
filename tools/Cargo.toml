@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+    "tmuxlib",
+    "cc-beacon",
+    "cc-attend",
+    "cc-fleet",
+    "cc-tape",
+    "cc-layout",
+    "cc-launch",
+    "to-claude",
+    "talk-fleet",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+
+[workspace.dependencies]
+tmuxlib = { path = "tmuxlib" }
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
