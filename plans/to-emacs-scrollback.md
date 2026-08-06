@@ -60,9 +60,14 @@ Never `emacsclient -c` from a script: under Wayland it dies with
 
 ## Accepted limitations
 
-- **Alt-screen TUIs**: `capture-pane` sees the alt screen plus the *primary* screen's
-  history — the TUI session body is invisible, the same documented blindness as
-  to-claude; `prefix T` tape ([pane-tape-recorder](pane-tape-recorder.md)) is the remedy.
+- **Alt-screen TUIs**: an alt-screen pane has no tmux history (`history_size` is 0) —
+  the scroll content lives inside the application, so the capture is one screen deep.
+  to-emacs appends `⚠ alt-screen TUI: visible screen only` to its report instead of
+  passing that off as a full scrollback. Remedies: for Claude Code panes, disable the
+  fullscreen renderer (`"tui": "default"` in settings.json, `/tui default` in-session,
+  or `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1`) so the conversation accumulates in real
+  tmux scrollback — set globally on this machine 2026-08-07; for other TUIs,
+  `prefix T` tape ([pane-tape-recorder](pane-tape-recorder.md)).
 - **Capturing the Emacs pane itself**: you get the TUI framebuffer as a file. Harmless.
 - **ANSI is stripped** (no `-e`): the buffer is plain text, which is what
   isearch/occur want.

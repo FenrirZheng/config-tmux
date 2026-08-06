@@ -78,7 +78,17 @@ fn run(src: &str) -> i32 {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.display().to_string());
-    t::message(&format!("→ EMACS {name} ({lines} lines, {via})"));
+    // An alt-screen TUI (claude, vim, less) keeps its scroll content inside the
+    // application — tmux history is empty and the capture is one screen deep.
+    // Say so, instead of letting a 38-line "full scrollback" pass silently.
+    // Remedy for Claude panes: `/tui default` (classic renderer) puts the
+    // conversation into real tmux scrollback.
+    let warn = if t::display(Some(src), "#{alternate_on}").unwrap_or_default() == "1" {
+        "; ⚠ alt-screen TUI: visible screen only"
+    } else {
+        ""
+    };
+    t::message(&format!("→ EMACS {name} ({lines} lines, {via}{warn})"));
     0
 }
 
