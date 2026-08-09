@@ -326,7 +326,7 @@ already recorded.
 ** TODO Origin stamp contract redesign :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t5
-:ASSIGNEE:
+:ASSIGNEE: claude-grill-session
 :BLOCKED_BY:
 :END:
 
