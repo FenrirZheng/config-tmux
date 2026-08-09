@@ -27,6 +27,12 @@ Crates table and the Key bindings table there.
 
 Vocabulary: [[file:../../CONTEXT.org][CONTEXT.org]].
 
+A destination-reached gate was run on 2026-08-09 and *failed*: fifteen blockers survived
+verification, so tickets t1-t4 are DONE but their conclusions are not safe to build from
+as they stand. Tickets t5-t11 and the current fog all graduated out of that review — read
+[[file:assets/destination-review-2026-08-09.md][the destination review]] before working any of them, and treat the
+t1-t4 Resolutions as superseded wherever it contradicts them.
+
 * Decisions so far
 
 - [[#t1][Clipboard delivery path for seek output]] — tmux emits OSC 52 only on copy events, never on set-buffer — seek's clipboard half needs wl-copy or copy-pipe
