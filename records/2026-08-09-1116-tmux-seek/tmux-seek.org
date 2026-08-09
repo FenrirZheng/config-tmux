@@ -255,7 +255,7 @@ instead of resolving it.
 ** TODO Key-table coverage and documentation surface :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t4
-:ASSIGNEE:
+:ASSIGNEE: claude-grill-session
 :BLOCKED_BY:
 :END:
 
