@@ -648,7 +648,7 @@ unverified on wrapped lines and wide (CJK) characters — verify both before shi
 ** TODO Rollback and cutover for the thumbs removal :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t10
-:ASSIGNEE:
+:ASSIGNEE: claude-grill-session
 :BLOCKED_BY:
 :END:
 
