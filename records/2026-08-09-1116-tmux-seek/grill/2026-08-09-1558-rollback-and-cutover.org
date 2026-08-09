@@ -1,0 +1,46 @@
+#+TITLE: rollback-and-cutover
+
+Grilled within [[file:../tmux-seek.org::#t10][Rollback and cutover for the thumbs removal]].
+
+* Decisions
+
+- =plugins/tmux-thumbs/= (40MB, untracked) is deleted at cutover, honouring the
+  original design-interview decision. The destination review's finding was that no
+  rollback was *recorded*, not that deletion was wrong — the fix is a documented
+  recipe, not a reversal. Restoration is fully automatic: =tmux-thumbs-install.sh=
+  exists in the plugin, and =tmux-thumbs.sh= auto-triggers it in a split window when
+  the binary is missing, so a re-clone rebuilds itself on first use.
+- The cutover is a *single atomic commit* — thumbs config removal (tmux.conf lines 38,
+  57, 60-68, 74), the seek bindings in claude.conf, the two pins, and both cheat.txt
+  sites — so rollback is exactly one =git revert=. The load-bearing fact: with both
+  configs present seek wins ~prefix Space~, because claude.conf loads last (the queued
+  run-shell at tmux.conf line 128 runs after thumbs' at line 74) — a partial rollback
+  that only restores thumbs config is therefore *ineffective*, which makes atomicity
+  the only clean shape. It also matches the repo's config-plus-service commit
+  convention. The seek crate itself lands in its own commits before the cutover.
+- Big-bang cutover is now a *recorded rollout decision*, answering the review's point
+  that the parallel-run option had been declined on feature-scope grounds while the
+  rollout question itself was never asked. Sequencing makes it safe: the execution
+  checklist puts the cutover commit after seek passes the runbook's Verify section.
+- The rollback recipe lives in runbooks/seek.md's Troubleshooting:
+  =git revert <cutover-commit>= → ~prefix I~ (TPM parses =@plugin= lines from the
+  config *files*, so the clone works right after the revert, before any re-source) →
+  =tmux source-file ~/.tmux/tmux.conf= → first ~prefix Space~ auto-builds thumbs.
+  Known cost, recorded: with no network the re-clone fails — accepted when deletion
+  was chosen.
+
+* Rejected alternatives
+
+- Keeping the tree until a verification period passes — a second action and a dangling
+  to-do, guarding a window that does not exist since cutover already follows
+  verification.
+- Keeping the tree permanently — reverses a decision the user made explicitly for
+  40MB of dead weight.
+- Staged commits (seek first, thumbs removal later) — rollback needs two reverts, and
+  during the overlap ~prefix Space~'s owner is decided by load order rather than
+  intent.
+
+* Open items
+
+- None. The recipe's exact runbook wording rides with the runbook itself, which is
+  [[file:../tmux-seek.org::#t11][The specification artifact and the scope boundary]]'s territory.
