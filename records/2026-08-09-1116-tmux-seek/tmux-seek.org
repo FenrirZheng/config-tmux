@@ -43,3 +43,28 @@ tmux-thumbs behaviour was raised explicitly during the design interview and acce
 revisiting it is a new effort, not a decision on the way to this destination.
 
 * Tickets
+
+** TODO Clipboard delivery path for seek output :research:
+:PROPERTIES:
+:CUSTOM_ID: t1
+:ASSIGNEE:
+:BLOCKED_BY:
+:END:
+
+*** Question
+
+Does `tmux set-buffer` alone reach the Wayland system clipboard under
+`set-clipboard on` (via OSC 52) in this alacritty + tmux 3.5a setup, or must
+`seek` shell out to `wl-copy` the way every existing capture-rail path does?
+
+The comment at tmux.conf lines 63-66 records an observation that it does NOT:
+tmux-thumbs' stock uppercase command used `set-buffer` + `paste-buffer` and left
+Ctrl+Shift+V pasting whatever was in the system clipboard from before, which is
+why `@thumbs-command` and `@thumbs-upcase-command` were both rewritten to pipe
+through `wl-copy` explicitly. That observation predates the current terminal and
+tmux versions and was never re-tested.
+
+This decides whether seek's clipboard path is one tmux call or a shell-out, so it
+blocks the CLI surface. Answer with a measurement, not a reading of the docs:
+set a buffer from a detached command, then read the actual Wayland selection back
+with `wl-paste`, with a real client attached and again with none.
