@@ -1,0 +1,12 @@
+#+TITLE: CONTEXT — shared vocabulary for the tmux config repo
+
+* Language
+
+- *Capture rail* :: The set of tmux bindings that move evidence from a pane into a
+  Claude composer without ever submitting it — =prefix e=, =copy-mode Y=, and the
+  =seek= output keys. Its two invariants: everything it sends also reaches
+  =wl-copy=, and nothing in it ever presses Enter. Avoid: capture pipeline, send rail
+- *Seek* :: The copy-mode jump tool bound to =prefix Space=: type to filter, every
+  match highlights live, Enter lands the copy-mode cursor on a match, then one key
+  chooses grain (word or line) and destination (clipboard, or clipboard plus
+  Claude). Avoid: jump, thumbs, search tool

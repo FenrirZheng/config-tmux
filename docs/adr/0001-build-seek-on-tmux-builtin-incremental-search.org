@@ -1,0 +1,95 @@
+#+TITLE: ADR-0001: Build seek on tmux's built-in incremental search
+#+STATUS: accepted
+#+DATE: 2026-08-09
+#+DECIDERS: @fenrir
+
+* Context and Problem Statement
+
+Replacing =fcsonline/tmux-thumbs= on ~prefix Space~ with a type-to-filter jump
+requires incremental search, live highlighting of every match, and coverage of
+this server's full =history-limit 100000= scrollback — all of which tmux 3.5a
+already implements natively (=search-forward-incremental= / =search-backward-incremental=,
+matches styled by =copy-mode-match-style=). The decision is whether the
+replacement reuses that machinery or ships its own.
+
+* Decision Drivers
+
+- Must filter incrementally as characters are typed and highlight *every* match
+  across the whole 100000-line scrollback, not just the visible region.
+- Must keep the three existing capture-rail outputs working: =wl-copy=,
+  =tmux set-buffer=, and =to-claude= (see [[file:../../claude.conf][claude.conf]]).
+- Single maintainer, dotfiles repo: interaction code written here is code that
+  has to be debugged here forever, whereas tmux's search follows upstream.
+
+* Considered Options
+
+- Option 1: Drive tmux's built-in incremental search, and write a binary only for
+  post-Enter cursor correction and output dispatch
+- Option 2: Write a Rust keyboard loop that owns every keystroke and drives the
+  target pane's highlight from outside
+- Option 3: Render our own hint overlay, reimplementing tmux-thumbs
+
+* Decision Outcome
+
+Chosen option: "*Option 1*", because the two hardest drivers — incremental
+filtering and highlighting every match across 100000 lines of scrollback — are
+satisfied by tmux itself at zero cost, leaving =seek= with only the work tmux
+does not do: correcting the cursor onto the match start and dispatching to the
+capture rail. Options 2 and 3 both require reimplementing search interaction that
+already exists, which contradicts the single-maintainer driver.
+
+** Consequences
+
+- Good, because search, live highlighting, =n= / =N= cycling and full scrollback
+  coverage cost no code at all and track tmux upstream.
+- Good, because the existing =copy-mode Y= binding and the established
+  "uppercase also sends to Claude" convention survive untouched.
+- Bad, because finishing takes two keystrokes (Enter to close the prompt, then an
+  output key) instead of one: =command-prompt= keys are hardcoded in tmux and
+  cannot be rebound, so there is no way to end the search *and* choose an output
+  in a single press.
+- Bad, because Escape cannot restore the pre-search cursor. Measured on tmux
+  3.5a: origin =x=0 y=22=, after typing =needle3= the cursor sat at =x=8 y=20=,
+  and after Escape it was still at =x=8 y=20=. Architecture 1 has no hook on that
+  path, so the origin must be recovered via =set-mark= plus =M-x= (jump-to-mark).
+- Bad, because tmux-thumbs' zero-input mode — one keypress labels every path and
+  URL on screen — has no replacement; =seek= always requires typing first.
+
+* Pros and Cons of the Options
+
+** Option 1: Drive tmux's built-in incremental search
+
+- Good, because incremental filtering, all-match highlighting and scrollback
+  coverage are already implemented and maintained upstream.
+- Good, because the binary reduces to reading =pane_search_string= /
+  =copy_cursor_x= / =copy_cursor_y= and issuing =send-keys -X=, which is a small
+  and testable surface.
+- Bad, because =command-prompt= is a client-side status-line widget: its keys are
+  not bindable, so the interaction shape is fixed by tmux.
+- Bad, because nothing of ours runs on the Escape path, making cancel semantics a
+  workaround rather than a design choice.
+
+** Option 2: Write a Rust keyboard loop driving the pane from outside
+
+- Good, because every key including Escape belongs to us, so single-key finish
+  and true cursor restore both become possible.
+- Bad, because =search-forward-incremental= cannot be invoked externally (verified:
+  =send-keys -X search-forward-incremental= leaves =pane_search_string= empty),
+  so incremental behaviour must be faked by resetting the cursor and re-running
+  =search-forward-text= on every keystroke.
+- Bad, because line editing — cursor keys, kill-word, paste — has to be written
+  and maintained by hand.
+
+** Option 3: Render our own hint overlay
+
+- Good, because it preserves tmux-thumbs' zero-input mode, where the target is
+  chosen by eye rather than by typing.
+- Bad, because it means reimplementing the whole of tmux-thumbs, which is the
+  dependency this effort exists to remove.
+- Bad, because it duplicates search, rendering and pane-swapping logic that tmux
+  already provides.
+
+* Links
+
+- Influenced by: [[file:../../records/2026-08-09-1116-tmux-seek/grill/2026-08-09-1116-tmux-seek.org][the design interview that settled it]]
+- Related to: [[file:../../claude.conf][claude.conf]] — the capture rail bindings =seek= plugs into

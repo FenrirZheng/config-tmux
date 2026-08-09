@@ -1,0 +1,96 @@
+#+TITLE: tmux-seek
+
+Design interview settling what replaces =fcsonline/tmux-thumbs= on ~prefix Space~.
+Vocabulary coined here: [[file:../../../CONTEXT.org][Capture rail, Seek]].
+
+* Decisions
+
+- Landing target is the *tmux copy-mode cursor*, not the desktop pointer — moving the
+  real pointer on this Wayland/GNOME session would need the RemoteDesktop portal plus
+  a tmux-cell-to-screen-pixel conversion, and every action the cursor is wanted for
+  (copy, open, send to Claude) happens inside copy-mode anyway.
+- This effort delivers *specification and decisions*, not an implementation.
+- Seek takes over all three tmux-thumbs outputs — cursor jump, =wl-copy= + =set-buffer=,
+  and =to-claude= — because removing thumbs would otherwise break the =to-claude --ref=
+  path wired at [[file:../../../tmux.conf][tmux.conf]] line 68.
+- Search covers the visible region *and* the scrollback — tmux's built-in search already
+  spans the whole history, and =history-limit= here is 100000.
+- Match semantics are *plain substring*; regex and fuzzy would both force a self-written
+  search engine.
+- Multiple matches are narrowed by typing more, then cycled with =n= / =N= — the built-in
+  provides both, so neither costs code.
+- Architecture: the *built-in incremental search prompt* plus copy-mode output keys, with
+  =seek= only correcting the cursor and dispatching output. Recorded as
+  [[file:../../../docs/adr/0001-build-seek-on-tmux-builtin-incremental-search.org][ADR-0001]].
+- ~prefix Space~ opens the *backward* (search up) prompt — measured: from the copy-mode
+  entry point at the pane bottom, a forward search wrapped to the top of a 264-line
+  history and landed on =line 3=, while backward landed on the on-screen =line 297=.
+- The cursor ends on the *match start*, which =seek= reaches by reading
+  =pane_search_string= for its length and issuing =send-keys -X -N <len> cursor-left= —
+  measured: the built-in lands one past the match end (x=11 for a match occupying
+  x=6..10), and at that position =copy_cursor_word= reads back empty, so both output
+  paths would receive nothing.
+- The tool is a Rust crate named =seek= in the =tools/= workspace, which already holds
+  nine sibling binaries and the shared =tmuxlib=.
+- tmux-thumbs is *removed outright*: its =@plugin= line, its =@thumbs-*= options and its
+  =run-shell= come out of tmux.conf, and =plugins/tmux-thumbs/= is deleted.
+- Output keys are =v= =w= =W= =l= =L= — the letter chooses grain (word / line), the case
+  chooses destination (clipboard / clipboard plus Claude). This is the convention already
+  in force: thumbs' uppercase hint and =copy-mode Y= both mean "also send to Claude".
+  All five keys are free in the copy-mode table.
+- The existing =copy-mode Y= binding (selection → =to-claude --paste=, defined in
+  [[file:../../../claude.conf][claude.conf]] line 77) is left untouched.
+- Sending to Claude splits by grain — word → =--ref=, line → =--paste= — which is the same
+  split thumbs' uppercase hint and =copy-mode Y= already make.
+- =seek= decides whether a word looks like a path and falls back to =--paste= when it does
+  not — measured: =ref_line= in [[file:../../../tools/to-claude/src/main.rs][to-claude/src/main.rs]] line 106 does no validation, it just
+  wraps the input as =@<text>=; the path regexp is inherited from thumbs'
+  =@thumbs-regexp-1=, which matches =file.ext:123= shaped text.
+- With no match, =seek= *fails closed*: it touches neither the clipboard nor Claude, and
+  reports on the status line.
+- ~prefix Space~ runs =send-keys -X set-mark= before opening the prompt so a cancel can be
+  undone with the already-bound =M-x= (jump-to-mark) — measured: tmux does *not* restore
+  the cursor on Escape (origin x=0 y=22, after typing =needle3= x=8 y=20, after Escape
+  still x=8 y=20), and this architecture has no hook on that path.
+
+* Rejected alternatives
+
+- *Moving the desktop pointer* — =org.freedesktop.portal.RemoteDesktop= does exist on this
+  box, but it needs a consent dialog, a ScreenCast session and a cell-to-pixel conversion;
+  the uinput route is closed because =/dev/uinput= is =root:root 0600= and =fenrir= belongs
+  to no uinput group.
+- *Architecture B, a Rust loop owning the keyboard* — =send-keys -X search-forward-incremental=
+  is a no-op from outside (=pane_search_string= stayed empty), so incremental behaviour
+  would have to be faked per keystroke on top of hand-written line editing.
+- *A self-drawn hint overlay with avy-style letter selection* — reimplements the very
+  dependency this effort removes.
+- *Fuzzy and regex matching* — both require owning the search engine.
+- *Keeping thumbs alongside seek on a different key* — raised explicitly, declined; the
+  loss of zero-input path labelling is accepted.
+- *Three other key layouts* — destination-only three keys, grain-only three keys, and a
+  grain-then-destination chord. All lost to the existing case-based convention.
+
+* Open items
+
+- thumbs' zero-input mode (one keypress labels every path and URL on screen) has *no
+  replacement*; =seek= always requires typing first. Accepted loss, not an oversight.
+- copy-mode in an alt-screen pane (vim / less / claude fullscreen) has no scrollback, only
+  the visible region — the same constraint =to-emacs= warns about (commit =33b86e5=).
+  Resolved by deciding whether =seek= should warn there too.
+- A match spanning two words (querying =a b=) leaves =copy_cursor_word= returning only the
+  word under the cursor, not the whole match. Resolved by defining word-grain behaviour for
+  multi-word matches.
+- A query that exists only deep in the scrollback jumps the view far from the current
+  screen. Resolved by deciding whether to bound the search range.
+- Empty query followed by Enter is undefined. Resolved by specifying it.
+- [[file:../../../cheat.txt][cheat.txt]] mentions ~prefix Space~ *twice* (the =COPY & GRAB= and =→ CLAUDE= sections) and
+  the repo's one-prefix-per-layer keybinding policy requires new keys to be registered
+  there. Resolved by editing both sites when the binding changes.
+- =set-mark= clobbers a manually set mark. Resolved by deciding whether that is acceptable
+  or the origin should be tracked another way.
+- Whether =set-buffer= reaches the system clipboard via OSC 52 under =set-clipboard on= is
+  unverified; the thumbs comment at tmux.conf lines 63-66 records an observation that it
+  does not, which is why =wl-copy= is kept. Resolved by testing OSC 52 in alacritty.
+- The command prompt cannot be driven by =send-keys= — it lives on the client's status
+  line — so prompt-level behaviour was only observable through a fifo-fed client. Any
+  further prompt-level question needs that same rig.
