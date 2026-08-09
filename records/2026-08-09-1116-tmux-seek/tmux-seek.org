@@ -380,3 +380,35 @@ Two questions to settle together, because the answer to the first shapes the sec
    fails silently. Note `to-claude` exits 1 on "no marked pane and no claude pane", so
    seek must be told whether to swallow that code — a non-zero exit becomes a tmux
    error popup.
+
+** TODO Status-line message safety and shape :grilling:
+:PROPERTIES:
+:CUSTOM_ID: t7
+:ASSIGNEE:
+:BLOCKED_BY: t5 t6
+:END:
+
+*** Question
+
+What seek writes to the status line is unsafe as specified, and two of its messages
+contradict other decisions. See [[file:assets/destination-review-2026-08-09.md][the destination review]], blockers 6, 4 and 14.
+
+1. `→ CLIP <text>` puts raw pane text through `display-message`, which expands formats.
+   Verified: `tmux display-message -p 'literal:#{pane_pid}'` prints `literal:536549`.
+   A grabbed word containing `#{...}` would expand on the status line. The repo already
+   has both the rule and the tool — tools/ARCHITECTURE.md line 121 mandates that
+   anything derived from tool arguments passes through `sanitize_format()`, and tmuxlib
+   ships that function at line 371 with a test — and the spec mentions neither.
+   Truncation for line grain is also unspecified; a long line overflows the status line.
+2. The alt-screen warning contradicts itself across tickets. Ticket t2's Resolution says
+   seek appends to-emacs's wording to its own `display-message`; ticket t3 then assigns
+   `W` / `L` messaging to to-claude, which knows nothing about `#{alternate_on}`. The
+   reasoning that makes the gap acceptable — the prompt label already warned during the
+   search — lives only in the 1304 grill snapshot and never reached this map.
+3. `v`'s only failure mode is silence. The per-key table says `seek back` reports
+   nothing, while the message set specifies `seek: no search — press prefix Space
+   first`. As written, `v` on a dead search is indistinguishable from the unbuilt-binary
+   silence that ticket t3 itself calls the unacceptable failure mode.
+
+Blocked on the stamp and clipboard tickets because the set of reportable states and the
+set of deliveries are both inputs to what the messages must say.
