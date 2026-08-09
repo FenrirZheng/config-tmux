@@ -39,6 +39,7 @@ t1-t4 Resolutions as superseded wherever it contradicts them.
 - [[#t2][Search-prompt edge-case semantics]] — search-prompt edge cases settled: hybrid word grain, warning in the prompt label, and a one-shot origin stamp instead of the sticky pane_search_string
 - [[#t3][seek CLI surface and failure contract]] — seek is a subcommand CLI (word/line/back) that computes the text itself and shells to wl-copy; to-claude speaks for the Claude keys; a load-time if-shell guards the missing binary
 - [[#t4][Key-table coverage and documentation surface]] — pin mode-keys and status-keys instead of double-binding; seek gets a runbook, per-key cheat.txt entries, one row in each ARCHITECTURE table, and a tools/ workspace step in the parent bootstrap
+- [[#t5][Origin stamp contract redesign]] — stamp deleted: search_present is the liveness signal, backward search already lands on the match start, v is removed, and delivery exits copy-mode
 
 * Not yet specified
 
@@ -323,7 +324,7 @@ One decision reached past the four questions: =status-keys emacs= is pinned alon
 Escape to =q= — which would silently falsify the Escape-cancel behaviour this map
 already recorded.
 
-** TODO Origin stamp contract redesign :grilling:
+** DONE Origin stamp contract redesign :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t5
 :ASSIGNEE: claude-grill-session
@@ -358,6 +359,41 @@ being improbable.
 
 Decide the liveness contract as a whole. If the stamp survives, say exactly when it is
 written, read and cleared, and what each of the three fail-closed states looks like.
+
+*** Resolution
+
+Settled in [[file:grill/2026-08-09-1443-origin-stamp-redesign.org][the 2026-08-09-1443 grill snapshot]] — ten decisions with their measurements,
+seven rejected alternatives, three open items. The headline decision graduated to
+[[file:../../docs/adr/0003-detect-search-liveness-via-search-present.org][ADR-0003]].
+
+The four review defects are resolved structurally, not patched:
+
+1. Consumed-before-read — gone with the stamp. seek writes nothing, so nothing is
+   consumed.
+2. No-search vs no-match indistinguishable — merged deliberately. Both are
+   =search_present=0=; the keys act as uniform grabbers there and the one remaining
+   fail-closed state is an empty cursor cell.
+3. Cancelled search reads as live — accepted. =search_present= stays 1 after Escape
+   (measured), tmux offers no Enter/Escape distinction, and the cursor is visibly on
+   the abandoned match; grabbing it grabs what the screen shows.
+4. Single-use keys — gone. =search_present= persists across repeated grabs, and
+   delivery now exits copy-mode anyway (house =copy-pipe-and-cancel= style), which
+   this map had never actually decided before.
+
+Two discoveries feed later tickets:
+
+- Backward search lands on the match start (forward x=7 vs backward x=4, same content,
+  same query). The =cursor-left= correction and the =v= key are deleted; the end+1
+  claim in the 1116 snapshot was a forward-only measurement applied to a backward
+  design.
+- seek no longer issues =send-keys= during operation, so the unverified =run-shell=
+  timing item in [[#t8][Binding placement and load ordering]] dissolves, and the =v=-silence
+  item in [[#t7][Status-line message safety and shape]] dissolves with the key.
+
+The grain rule as it now stands: =search_present=1= and whitespace in the query →
+deliver =pane_search_string= verbatim; otherwise =copy_cursor_word= / =copy_cursor_line=
+under the cursor. This gives [[#t9][Undefined input semantics]] a defined default for
+whitespace-bearing queries; trim-or-not stays that ticket's decision.
 
 ** TODO Clipboard delivery ownership across the output keys :grilling:
 :PROPERTIES:
