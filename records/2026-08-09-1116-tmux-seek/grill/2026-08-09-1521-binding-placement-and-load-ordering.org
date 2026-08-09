@@ -1,0 +1,57 @@
+#+TITLE: binding-placement-and-load-ordering
+
+Grilled within [[file:../tmux-seek.org::#t8][Binding placement and load ordering]].
+
+* Decisions
+
+- ~prefix Space~, the four output keys and the load-time guard all live in
+  [[file:../../../claude.conf][claude.conf]] — the capture rail's home (all fourteen =target/release= call sites and
+  the =Y= binding are already there), and it loads *last*: tmux.conf line 128 sources it
+  through a queued =run-shell= precisely so it wins over TPM's plugins, which puts the
+  guard's existence check after every plugin has run. The whole seek block sits in one
+  file.
+- The =mode-keys emacs= and =status-keys emacs= pins go in tmux.conf's options area,
+  following the house comment at lines 84-87 that options are set before the
+  =run-shell= lines.
+- Severity correction to the destination review's overwrite blocker: tmux-sensible
+  resets =status-keys= *unconditionally but to the same value* — sensible.tmux line 117
+  is a bare =set-option -g status-keys emacs= with no =option_value_not_changed= guard
+  (unlike its =display-time= handling), commented "emacs key bindings in tmux command
+  prompt are better than vi keys, even for vim users". sensible is an ally, not a
+  threat: with it present, =status-keys= is re-pinned emacs on every load regardless of
+  EDITOR; the tmux.conf pin covers the pre-TPM window and sensible-absent fresh
+  machines. =mode-keys= sensible does not touch at all, so that pin stands unchallenged.
+- The search-prompt label uses a *single binding* with a format conditional —
+  =#{?alternate_on,(seek ⚠ visible screen only),(seek)}= in =command-prompt -p= — as
+  the primary design, with an =if-shell -F= two-branch form as the fully specified
+  fallback. Whether =-p= expands formats is [未驗證]: two probe rigs failed (one fifo
+  handshake, one =tmux command-prompt= hanging when called from an external process),
+  and the man page documents expansion only for the =-F= template. Indirect evidence
+  says it very likely works — the stock =C-r= binding tmux ships embeds
+  =#{pane_search_string}= in =-I=, and prompt and input render through the same
+  machinery. Implementation verifies once and picks; both shapes are one line, so no
+  design decision is left open either way.
+- Load-order map, for the record: tmux.conf parses (options and binds take effect in
+  file order) → queued run-shells execute in order — TPM (line 47), thumbs (line 74, to
+  be removed), ace-window (line 89), claude.conf (line 128, last). claude.conf's
+  loading does not depend on TPM, so a fresh clone before ~prefix I~ still gets the
+  seek block.
+
+* Rejected alternatives
+
+- Bindings in tmux.conf where thumbs lived — splits the seek keys away from the rest of
+  the capture rail and evaluates the guard before plugins have run.
+- Entry in tmux.conf, output keys in claude.conf — two files to touch for one feature.
+- Pins in claude.conf so they land last — final-value guarantee is redundant (sensible
+  writes the same value) and it moves global options far from the options area the
+  house comment establishes.
+- Committing to the =if-shell= double branch outright — treats an unverified mechanism
+  as a failed one and takes on a permanent manual-sync obligation for two lines that
+  differ only in a label.
+
+* Open items
+
+- The =-p= format-expansion verification happens at implementation time with a real
+  interactive client — both outcomes have a fully specified shape, so nothing blocks
+  on it. The external-process rigs are unsuitable: =tmux command-prompt= invoked from
+  outside a client hung twice.
