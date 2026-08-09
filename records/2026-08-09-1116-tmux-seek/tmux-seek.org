@@ -44,6 +44,7 @@ t1-t4 Resolutions as superseded wherever it contradicts them.
 - [[#t7][Status-line message safety and shape]] — all seek messages use display-message -l (injection structurally impossible), text truncates at 48 via tmuxlib, and the alt-screen suffix rides only on live-search deliveries
 - [[#t8][Binding placement and load ordering]] — seek block lives in claude.conf (loads last), the two pins go in tmux.conf's options area, sensible turns out to re-pin status-keys to the same value, and the prompt label is one conditional binding with a specified two-branch fallback
 - [[#t9][Undefined input semantics]] — seek extracts the whitespace-delimited token itself (copy_cursor_word fragments paths), trims surrounding punctuation and the query, and the path rule is slash or line-number or letter-bearing extension
+- [[#t10][Rollback and cutover for the thumbs removal]] — delete the thumbs tree at cutover as originally decided, make the cutover one atomic commit so rollback is one git revert, and record the auto-rebuilding restore recipe in the runbook
 
 * Not yet specified
 
@@ -645,7 +646,7 @@ The two questions this ticket asked, answered — plus one it did not know to as
 Carried to implementation: the =copy_cursor_x= → line-content index mapping is
 unverified on wrapped lines and wide (CJK) characters — verify both before shipping.
 
-** TODO Rollback and cutover for the thumbs removal :grilling:
+** DONE Rollback and cutover for the thumbs removal :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t10
 :ASSIGNEE: claude-grill-session
@@ -669,6 +670,30 @@ big-bang cutover is a legitimate choice — it just has not been recorded as one
 parallel-run option (thumbs kept on a different key) was declined during the design
 interview for feature-scope reasons, not rollout-risk reasons, so the rollout question
 was never actually asked.
+
+*** Resolution
+
+Settled in [[file:grill/2026-08-09-1558-rollback-and-cutover.org][the 2026-08-09-1558 grill snapshot]] — four decisions, three rejected
+alternatives, no open items. No ADR: process and placement choices, all reversible.
+
+The two questions this ticket asked, answered:
+
+1. Rollback: the directory is still deleted — the review's finding was a missing
+   record, not a wrong decision — and the recipe is now recorded, destined for
+   runbooks/seek.md Troubleshooting: =git revert <cutover-commit>=, then ~prefix I~
+   (TPM parses =@plugin= lines from config files, so the clone works straight after
+   the revert), then re-source, then the first ~prefix Space~ auto-builds via
+   =tmux-thumbs-install.sh=, which =tmux-thumbs.sh= triggers itself when the binary
+   is missing. Known accepted cost: no network, no re-clone.
+
+2. Cutover: one atomic commit — thumbs config out (tmux.conf lines 38, 57, 60-68,
+   74), seek bindings, both pins, both cheat.txt sites in together — so rollback is
+   exactly one revert. The deciding measurement: with both configs present, seek wins
+   ~prefix Space~ because claude.conf's queued run-shell (tmux.conf line 128) executes
+   after thumbs' (line 74), so a partial rollback is ineffective and atomicity is the
+   only clean shape. Big-bang is thereby the recorded rollout decision the review
+   found missing; it is safe because the execution checklist places the cutover after
+   seek passes the runbook Verify.
 
 ** TODO The specification artifact and the scope boundary :grilling:
 :PROPERTIES:
