@@ -1,0 +1,84 @@
+#+TITLE: cli-surface-and-failure-contract
+
+Grilled within [[file:../tmux-seek.org::#t3][seek CLI surface and failure contract]].
+
+* Decisions
+
+- The clipboard half goes through a =wl-copy= shell-out rather than tmux's own
+  =copy-pipe= — seek must compute the text anyway to satisfy the hybrid grain rule, and
+  =select-word= returns only =alpha= for a match on =alpha bravo=, so the free route
+  would leave two disagreeing answers to "what text did this keypress grab". Recorded as
+  [[file:../../../docs/adr/0002-deliver-the-clipboard-half-through-wl-copy.org][ADR-0002]].
+- The argument surface is a grain subcommand plus a destination flag: =seek word=,
+  =seek word --claude=, =seek line=, =seek line --claude=, =seek back= — subcommands are
+  the house majority (=cc-attend jump|back=, =cc-tape toggle|strip|status=,
+  =cc-launch resume|project|pair=, =talk-fleet role set=; only =to-claude= uses mode
+  flags), and grain-as-subcommand with destination-as-flag mirrors the keys themselves,
+  where the letter picks the grain and the case picks the destination.
+- On =W= and =L= seek stays silent and lets =to-claude= emit its own
+  =→ CLAUDE <target>=; seek reports only on =w= and =l=. The convention in
+  tools/ARCHITECTURE.md is that a mis-send must be visible, and the thing that makes it
+  visible is *which* Claude pane received it — a fact only to-claude can state.
+- The missing-binary guard is a single =if-shell= evaluated at config load, binding
+  either the five real keys or five message stubs. Measured: with the binary absent,
+  =run-shell= is completely silent — no popup, no message, no window, no change to the
+  pane — so the untreated failure mode is "the key does nothing at all".
+- Path-shaped, for routing a word to =--ref= rather than =--paste=, means the union of
+  thumbs' two patterns plus a bare filename: a path containing a slash, or
+  =file.ext:123=, or =name.ext= with no slash. thumbs' built-in =path= regexp requires a
+  slash and the custom =@thumbs-regexp-1= requires a =:digits= suffix, so =main.rs= —
+  the thing a compiler error line usually shows — matches neither.
+- The message set is terse, matching to-claude and to-emacs: =→ CLIP foxtrot= on
+  success, =seek: no search — press prefix Space first=, =seek: no match for "a.b"=,
+  =seek: nothing under the cursor=, with =; ⚠ alt-screen TUI: visible screen only=
+  appended when =#{alternate_on}= is set. =seek back= emits nothing, since it delivers
+  no text anywhere.
+- The bindings pass =#{pane_id}= explicitly, following =bind e=. Measured: a
+  copy-mode binding expands its formats against the pane the key was pressed in, not the
+  active pane — with =%41= in copy-mode and =%42= made active, the binding read
+  =pane_id=%41 x=6 y=0 word=[bravo]=, matching =%41='s ground truth exactly.
+
+* Rejected alternatives
+
+- Driving =select-word= / =select-line= plus =copy-pipe-and-cancel= — free clipboard,
+  free selection highlight, and a pipe to to-claude in one tmux call, but it cannot
+  express the multi-token grain and it only reaches the clipboard while the pane is
+  visible in the client's current window. Full trade in ADR-0002.
+- Splitting the clipboard route by case, copy-pipe for single-token and line grains and
+  wl-copy for multi-token — two code paths for one user-visible action, with the seam
+  exactly where the grain rule is subtlest.
+- Mode-flag arguments in to-claude's style, and a single =seek grab --grain --to= verb —
+  both lose the direct mapping between the key's shape and the command's shape.
+- seek reporting on every path — its message would land after to-claude's and hide which
+  pane received the text.
+- A per-binding =if-shell= file test, and a shell wrapper at =~/.tmux/bin/seek= — the
+  first duplicates the same path and message five times, the second introduces a file
+  type this repo does not currently have (there is no =~/.tmux/bin=; all eleven bindings
+  call =tools/target/release/= directly).
+- Reporting only failures — contradicts ARCHITECTURE.md's rule that anything delivering
+  text elsewhere reports its resolved target.
+
+* Open items
+
+- =run-shell= timing is unverified. The existing =DoubleClick1Pane= binding inserts
+  =run-shell -d 0.3= between =select-word= and =copy-pipe-and-cancel=, which suggests
+  tmux is order-sensitive here; seek issues =send-keys -X cursor-left= back into the
+  same pane from inside a =run-shell=. Resolved by exercising the real binding once the
+  crate exists.
+- A query that is only whitespace, or one with a trailing space, still has undefined
+  grain under the hybrid rule. Carried from the edge-case grill; resolved by specifying
+  both.
+- The two binding branches, alt-screen and normal, must stay in sync by hand. Carried
+  from the edge-case grill; resolved when the binding block is written.
+- Building seek after tmux has started leaves the message stubs bound until the config
+  is reloaded. Resolved by saying so in the runbook.
+
+* Consequences accepted rather than resolved
+
+- The clipboard half of =W= and =L= is never reported, since to-claude speaks for those
+  keys. cheat.txt already states that everything the capture rail sends also lands in
+  wl-copy, so the behaviour is documented even though it is silent.
+- The alt-screen warning does not appear on =W= and =L=. It describes search coverage,
+  and search only ever comes from ~prefix Space~, whose prompt label always carries the
+  warning; the no-search grabber path takes only what is under the cursor, which is
+  visible by definition.

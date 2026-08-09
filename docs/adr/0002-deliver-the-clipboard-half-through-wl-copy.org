@@ -1,0 +1,87 @@
+#+TITLE: ADR-0002: Deliver seek's clipboard half through wl-copy
+#+STATUS: accepted
+#+DATE: 2026-08-09
+#+DECIDERS: @fenrir
+
+* Context and Problem Statement
+
+=seek= must put the grabbed text on the Wayland clipboard, and tmux offers to do that
+for free: with =set-clipboard on=, a copy-mode copy command emits OSC 52 and the
+clipboard is set without any external process. Measured on tmux 3.5a, =set-buffer= does
+*not* emit OSC 52 at all, while =select-word= plus =copy-pipe-and-cancel= does — so the
+free route exists, but only through tmux's own selection commands.
+
+* Decision Drivers
+
+- The word grain is hybrid: a single-token query yields the whole word containing the
+  match, a query containing whitespace yields the matched text. =select-word= returns
+  only =alpha= for a match on =alpha bravo=, so it cannot express the second case.
+- The free route was measured to reach the clipboard only while the pane is visible in
+  the client's current window; a copy in a background window set the tmux buffer and
+  left the clipboard untouched.
+- Every existing capture-rail binding already pipes through =wl-copy= explicitly, and
+  cheat.txt states as an invariant that everything the rail sends also lands there.
+
+* Considered Options
+
+- Option 1: Compute the text in =seek= and pipe it to =wl-copy=
+- Option 2: Drive =select-word= / =select-line= then =copy-pipe-and-cancel= and let
+  =set-clipboard on= deliver
+- Option 3: Split by case — =copy-pipe= for single-token and line grains, =wl-copy= for
+  the multi-token grain
+
+* Decision Outcome
+
+Chosen option: "*Option 1*", because =seek= has to compute the text anyway to satisfy
+the hybrid grain rule, and letting tmux compute it again through =select-word= would
+leave two disagreeing answers to the question "what text did the user grab". The
+shell-out also drops the visible-pane condition that the free route carries.
+
+** Consequences
+
+- Good, because there is exactly one place that decides what text a keypress grabbed,
+  and the hybrid grain rule lives there whole rather than split across tmux primitives.
+- Good, because delivery no longer depends on the pane being visible in the client's
+  current window, so the behaviour does not change when the same keys are used from a
+  background pane.
+- Good, because it matches every existing capture-rail binding, keeping cheat.txt's
+  "all three land in wl-copy too" invariant true without a special case.
+- Bad, because it spends a process per keypress on something tmux would have done for
+  free inside its own event loop.
+- Bad, because the selection highlight that =select-word= would have drawn is lost —
+  the grabbed text is never visibly marked before it is taken.
+- Bad, because =seek= now hard-depends on =wl-copy= being installed, where the free
+  route would have needed nothing beyond tmux itself.
+
+* Pros and Cons of the Options
+
+** Option 1: Compute the text in seek and pipe it to wl-copy
+
+- Good, because one component owns the "what text" decision end to end.
+- Good, because it works regardless of pane visibility or whether a client is attached.
+- Bad, because it forks a process on every keypress.
+- Bad, because it adds a runtime dependency on wl-clipboard.
+
+** Option 2: select-word / select-line plus copy-pipe-and-cancel
+
+- Good, because the clipboard, the selection highlight, and a pipe to =to-claude= all
+  come from one tmux command — exactly the shape =copy-mode Y= already uses.
+- Bad, because =select-word= cannot express the multi-token grain, so the hybrid rule
+  would have to be rebuilt from =begin-selection= plus repeated =cursor-right=.
+- Bad, because delivery silently does nothing when the pane is not visible in the
+  client's current window.
+
+** Option 3: Split by case
+
+- Good, because each grain uses the cheapest mechanism that can express it.
+- Bad, because it creates two code paths for one user-visible action, and the seam sits
+  exactly where the grain rule is most subtle.
+- Bad, because the visible-pane condition would then apply to some keypresses and not
+  others, which is the kind of inconsistency that is impossible to debug from the
+  outside.
+
+* Links
+
+- Related to: [[file:0001-build-seek-on-tmux-builtin-incremental-search.org][ADR-0001]] — the architecture this decision sits inside
+- Influenced by: [[file:../../records/2026-08-09-1116-tmux-seek/grill/2026-08-09-1218-search-prompt-edge-cases.org][the edge-case grill]], which fixed the hybrid grain rule
+- Influenced by: [[file:../../records/2026-08-09-1116-tmux-seek/tmux-seek.org::#t1][Clipboard delivery path for seek output]] — the OSC 52 measurements
