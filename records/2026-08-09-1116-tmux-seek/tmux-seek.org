@@ -453,10 +453,10 @@ contradict other decisions. See [[file:assets/destination-review-2026-08-09.md][
    `W` / `L` messaging to to-claude, which knows nothing about `#{alternate_on}`. The
    reasoning that makes the gap acceptable — the prompt label already warned during the
    search — lives only in the 1304 grill snapshot and never reached this map.
-3. `v`'s only failure mode is silence. The per-key table says `seek back` reports
-   nothing, while the message set specifies `seek: no search — press prefix Space
-   first`. As written, `v` on a dead search is indistinguishable from the unbuilt-binary
-   silence that ticket t3 itself calls the unacceptable failure mode.
+3. (Dissolved by [[#t5][Origin stamp contract redesign]]: the `v` key is removed and the
+   message set shrinks to one fail-closed string — "nothing under the cursor". What
+   remains for this ticket is the wording and sanitization of that one message plus
+   the `→ CLIP` success line.)
 
 Blocked on the stamp and clipboard tickets because the set of reportable states and the
 set of deliveries are both inputs to what the messages must say.
@@ -484,12 +484,11 @@ See [[file:assets/destination-review-2026-08-09.md][the destination review]], bl
    117 runs `tmux set-option -g status-keys emacs`, and TPM executes at tmux.conf line
    47 — so a plain `set -g status-keys emacs` placed before that line loses. The
    `mode-keys` half of the claim does hold; it is genuinely underived.
-3. `run-shell` timing is unverified and has no stated fallback. seek issues
-   `send-keys -X cursor-left` back into the same pane from inside a `run-shell`. One
-   correction to the record: the `DoubleClick1Pane` binding cited as house precedent is
-   a tmux *default*, not a binding in this repo — it appears in neither tmux.conf nor
-   claude.conf. The precedent still shows tmux itself inserting `run-shell -d 0.3`
-   there, but the framing in the grill snapshots is wrong.
+3. (Dissolved by [[#t5][Origin stamp contract redesign]]: seek no longer issues any
+   `send-keys` into the pane during operation — the `cursor-left` correction is deleted
+   because backward search lands on the match start — so there is no ordering to race.
+   The record correction stands: `DoubleClick1Pane` is a tmux default, not a repo
+   binding.)
 
 Also settle how the alt-screen and normal branches of the `prefix Space` binding stay in
 sync, which three grills deferred.

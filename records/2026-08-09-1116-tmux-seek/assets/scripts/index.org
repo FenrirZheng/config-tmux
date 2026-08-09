@@ -2,3 +2,5 @@
 - [2026-08-09 11:40] osc52-probe2.sh <- /tmp/claude-1000/-home-fenrir--tmux/144822a8-57aa-452f-a980-885e0176e22c/scratchpad/osc52-probe2.sh (session 144822a8-57aa-452f-a980-885e0176e22c)
 - [2026-08-09 11:46] t2-probe.sh <- /tmp/claude-1000/-home-fenrir--tmux/144822a8-57aa-452f-a980-885e0176e22c/scratchpad/t2-probe.sh (session 144822a8-57aa-452f-a980-885e0176e22c)
 - [2026-08-09 11:49] t2-probe2.sh <- /tmp/claude-1000/-home-fenrir--tmux/144822a8-57aa-452f-a980-885e0176e22c/scratchpad/t2-probe2.sh (session 144822a8-57aa-452f-a980-885e0176e22c)
+- [2026-08-09 13:46] t5-search-present.sh <- /tmp/claude-1000/-home-fenrir--tmux/144822a8-57aa-452f-a980-885e0176e22c/scratchpad/t5-search-present.sh (session 144822a8-57aa-452f-a980-885e0176e22c)
+- [2026-08-09 13:47] t5-transitions.sh <- /tmp/claude-1000/-home-fenrir--tmux/144822a8-57aa-452f-a980-885e0176e22c/scratchpad/t5-transitions.sh (session 144822a8-57aa-452f-a980-885e0176e22c)

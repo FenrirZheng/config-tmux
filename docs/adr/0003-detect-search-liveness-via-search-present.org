@@ -1,0 +1,96 @@
+#+TITLE: ADR-0003: Detect search liveness via search_present and grab at the cursor
+#+STATUS: accepted
+#+DATE: 2026-08-09
+#+DECIDERS: @fenrir
+
+* Context and Problem Statement
+
+The destination review found four defects in the =@seek_origin= stamp mechanism —
+consumed before it could be read, unable to distinguish "no search" from "no match", a
+cancelled search reading as live, and one-shot consumption making the output keys
+single-use — and the whole mechanism existed to guard a =cursor-left= correction that
+turns out to be unnecessary: measured on identical content, =search-backward-text= lands
+the cursor on the match *start* (x=4 for a match at x=4..6) while only the forward
+variant lands one past the end (x=7), and seek's search is backward.
+
+* Decision Drivers
+
+- The record's end+1 landing claim came from measuring the forward search only; the
+  design uses backward, so every mechanism built on that claim guards against a problem
+  seek does not have.
+- tmux ships a liveness signal: =#{search_present}= is documented as "1 if search
+  started in copy mode", and measured behaviour fits — it resets when copy-mode is left
+  and re-entered (unlike the sticky =pane_search_string=), and it tracks the *latest*
+  search rather than latching, dropping to 0 when a later query matches nothing.
+- Self-managed state was the source of every defect: anything seek writes needs a
+  clearing rule, and tmux offers no copy-mode-exit hook to hang one on.
+
+* Considered Options
+
+- Option 1: Delete the stamp and the cursor correction; read =search_present= and grab
+  at the cursor
+- Option 2: Keep the =@seek_origin= stamp with corrected wording (read, then unset, then
+  act)
+- Option 3: Use =search_present= as the primary signal and keep the stamp for provenance
+
+* Decision Outcome
+
+Chosen option: "*Option 1*", because the backward-landing measurement removes the only
+consumer of the stamp's position data, and =search_present='s two measured properties —
+reset on re-entry, tracking the latest search — mean that whenever it reads 1,
+=pane_search_string= is exactly the query that produced the current cursor position.
+seek becomes a pure reader: no writes into tmux state during operation, so there is
+nothing to clear and no ordering to get wrong.
+
+** Consequences
+
+- Good, because the four review defects disappear structurally rather than being
+  patched: no consumption order, no single-use keys, no origin-cell false negative, and
+  one merged fail-closed state instead of two indistinguishable ones.
+- Good, because seek issues no =send-keys= into the pane during operation (only a
+  race-free trailing =cancel= on success), which dissolves the unverified =run-shell=
+  timing risk the review flagged.
+- Good, because the =v= key loses its job — backward search already leaves the cursor on
+  the match start — shrinking the output keys to =w= / =W= / =l= / =L=.
+- Bad, because =search_present= stays 1 after Escape cancels the prompt, so a grab after
+  a cancelled search takes the abandoned match; tmux exposes no signal that separates
+  Enter from Escape, and this is accepted rather than worked around.
+- Bad, because =search_present=0= cannot distinguish "entered by mouse wheel, never
+  searched" from "searched, nothing matched", so the earlier fail-closed-on-no-match
+  decision narrows: after a failed search the keys grab at the entry point like any
+  other grab, and the only refusal left is an empty cursor cell.
+- Bad, because a multi-token grab after manually moving the cursor delivers the query
+  text rather than what is under the cursor — a documented edge with no mechanism
+  guarding it.
+
+* Pros and Cons of the Options
+
+** Option 1: search_present, grab at the cursor
+
+- Good, because the signal is tmux's own, with the reset and latest-search properties
+  measured rather than assumed.
+- Good, because zero self-managed state means zero clearing rules.
+- Bad, because the signal's granularity caps the distinctions seek can make (Escape
+  vs Enter, wheel-entry vs failed search).
+
+** Option 2: Keep the stamp with corrected wording
+
+- Good, because seek keeps full control over what the stamp means.
+- Bad, because the single-use and origin-cell defects survive the rewording, and the
+  clearing problem is unsolved — tmux has no copy-mode-exit hook.
+- Bad, because it guards a =cursor-left= correction the backward measurement shows is
+  unnecessary.
+
+** Option 3: search_present plus a provenance stamp
+
+- Good, because it could separate wheel-entry from failed-search.
+- Bad, because the stamp's staleness problem returns in full — an abandoned copy-mode
+  leaves the mark set for the next unrelated session — which is the defect class this
+  redesign exists to remove.
+
+* Links
+
+- Related to: [[file:0001-build-seek-on-tmux-builtin-incremental-search.org][ADR-0001]] — the architecture this mechanism lives inside
+- Related to: [[file:0002-deliver-the-clipboard-half-through-wl-copy.org][ADR-0002]] — unaffected: seek still computes the text itself for the grain rule
+- Influenced by: [[file:../../records/2026-08-09-1116-tmux-seek/assets/destination-review-2026-08-09.md][the destination review]], blocker 3 — the four stamp defects
+- Influenced by: [[file:../../records/2026-08-09-1116-tmux-seek/grill/2026-08-09-1443-origin-stamp-redesign.org][the redesign grill]], which carries the measurements

@@ -1,0 +1,84 @@
+#+TITLE: origin-stamp-redesign
+
+Grilled within [[file:../tmux-seek.org::#t5][Origin stamp contract redesign]].
+
+* Decisions
+
+- Liveness detection moves to tmux's own =#{search_present}= and the =@seek_origin=
+  stamp is deleted. Recorded as [[file:../../../docs/adr/0003-detect-search-liveness-via-search-present.org][ADR-0003]]. Measured, six states: fresh copy-mode 0;
+  matched-then-Enter 1; left-and-re-entered copy-mode 0 while =pane_search_string=
+  stayed sticky; searched-no-match 0; matched-then-Escape 1; empty-prompt-Enter 0. And
+  within one session it tracks the latest search rather than latching — a later
+  no-match query drops it back to 0 — so =search_present=1= guarantees
+  =pane_search_string= is the query that produced the current cursor position, even
+  after =n= cycling.
+- The =cursor-left= correction is deleted: backward search lands on the match *start*.
+  Measured on identical content with the same query — =search-forward-text= x=7
+  (end+1), =search-backward-text= x=4 (start, match at x=4..6). The end+1 claim in the
+  earlier record came from measuring the forward variant only; seek's search is
+  backward, so the correction guarded a problem seek never had. At the backward landing
+  =copy_cursor_word= already returns the containing word (measured earlier: x=6 gives
+  =bravo=).
+- The =v= key is removed; the output keys are =w= / =W= / =l= / =L=. Its one job —
+  retreat to the match start — is where backward search already puts the cursor.
+  Returning to the pre-search position stays with =set-mark= + =M-x= from the
+  edge-case grill, unchanged.
+- seek performs no =send-keys= into the pane during operation — it only reads formats
+  and delivers — plus one race-free trailing =cancel= on success. The unverified
+  =run-shell= timing risk from the destination review dissolves with the writes.
+- The grain rule in full: =search_present=1= and the query contains whitespace →
+  deliver =pane_search_string= itself (for a plain-text substring search the matched
+  text *is* the query); otherwise =w= delivers =copy_cursor_word= and =l= delivers
+  =copy_cursor_line=.
+- With =search_present=0= the four keys are uniform grabbers — no correction, take
+  what is under the cursor. This keeps the wheel-entry / =prefix C-t= grabbing decided
+  in the edge-case grill and *narrows* the old fail-closed-on-no-match decision:
+  pressing a key after a failed search grabs the entry-point text. Accepted because
+  the incremental prompt shows no highlight while a non-matching query is typed, so
+  the user knows before Enter.
+- Exactly one fail-closed state remains: nothing under the cursor → one message. The
+  separate "no search" and "no match" messages are gone; measured, both states are
+  =search_present=0= with the cursor at the entry origin, indistinguishable.
+- Delivery exits copy-mode, matching every delivering binding in this repo (=Y=,
+  =M-w=, =C-w=, =DoubleClick1Pane= all use =copy-pipe-and-cancel=). This question had
+  never been asked in any earlier round. Fail-closed stays in copy-mode so the user
+  can reposition and retry.
+- Escape-then-grab takes the abandoned match — accepted, runbook material. Measured:
+  =search_present= is 1 after Escape exactly as after Enter; tmux has no signal
+  separating them, and the cursor is visibly sitting on that match.
+- A multi-token grab after manually moving the cursor delivers the query text, not
+  what is under the cursor — documented edge, no mechanism added.
+
+* Rejected alternatives
+
+- Keeping the =@seek_origin= stamp with corrected read-unset-act wording — the
+  single-use and origin-cell defects survive, and the clearing problem has no hook to
+  hang on.
+- Dual signal, =search_present= plus a stamp for provenance — reintroduces staleness:
+  an abandoned copy-mode leaves the mark for the next unrelated session.
+- Rebinding =v= as a return-to-origin key — =set-mark= + =M-x= already does it — or as
+  a preview/confirmation key — a whole key spent on information a =display-message=
+  can carry.
+- Storing the previous query to split "no search" from "no match" — misjudges the
+  same string searched twice, as already established in the edge-case grill.
+- A custom key-table wrapped around the prompt to intercept Escape — prompt keys are
+  hardcoded to =status-keys=, not bindable; established by measurement in the first
+  design interview.
+- Fail-closed on all of =search_present=0= — kills the wheel-entry grabbing the user
+  chose deliberately.
+- Staying in copy-mode after a successful delivery — breaks with every delivering
+  binding in the repo.
+
+* Open items
+
+- Multi-token query, then manual cursor movement, then =w= — delivers the query rather
+  than the text under the cursor. Documented edge; revisit only if it bites in use.
+- Whitespace-only and trailing-space queries now have a *defined default* under the
+  grain rule (query contains whitespace → delivered verbatim as the matched text), but
+  whether to trim instead remains [[file:../tmux-seek.org::#t9][Undefined input semantics]]' call.
+- The =search_present= measurements are tmux 3.5a behaviour on this machine; the
+  variable is documented only as "1 if search started in copy mode", so the
+  reset-on-re-entry property should be re-verified on any tmux upgrade. Runbook
+  material.
+
+Probe scripts: [[file:../assets/scripts/t5-search-present.sh][t5-search-present.sh]] and [[file:../assets/scripts/t5-transitions.sh][t5-transitions.sh]].
