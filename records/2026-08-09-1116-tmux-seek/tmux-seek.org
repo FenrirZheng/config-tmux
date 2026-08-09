@@ -346,3 +346,37 @@ being improbable.
 
 Decide the liveness contract as a whole. If the stamp survives, say exactly when it is
 written, read and cleared, and what each of the three fail-closed states looks like.
+
+** TODO Clipboard delivery ownership across the output keys :grilling:
+:PROPERTIES:
+:CUSTOM_ID: t6
+:ASSIGNEE:
+:BLOCKED_BY:
+:END:
+
+*** Question
+
+As specified, nobody delivers the clipboard half on the `W` and `L` paths, and the tmux
+buffer half was dropped somewhere between the design interview and ADR-0002. See
+[[file:assets/destination-review-2026-08-09.md][the destination review]], blocker 2.
+
+The trail: the 1116 design snapshot's decision 3 says seek takes over all three thumbs
+outputs — "cursor jump, `wl-copy` + `set-buffer`, and `to-claude`". ADR-0001's drivers
+repeat `tmux set-buffer`. ADR-0002's decision text says only "pipe it to `wl-copy`".
+Ticket t3's per-key table reports `→ CLIP` for `w` / `l` and "to-claude speaks" for
+`W` / `L`, and never assigns the clipboard on that second path. Verified in the source:
+tmux.conf lines 57 and 68 both do `wl-copy && tmux set-buffer`, and `to-claude --ref`
+does not touch the clipboard — only its `--paste` mode does. So `W` as specified
+delivers to Claude and clipboards nothing, which is exactly the regression the comment
+at tmux.conf lines 63-66 records having already been fixed once.
+
+Two questions to settle together, because the answer to the first shapes the second:
+
+1. Does seek write the tmux buffer as well as the Wayland clipboard? Dropping
+   `set-buffer` regresses `prefix ]`, which cheat.txt advertises.
+2. What happens when `wl-copy` is missing or fails, and when `to-claude` fails?
+   ADR-0002 declares a hard dependency on wl-copy and nothing states the failure
+   behaviour; combined with the exit-0 convention and no message, the clipboard half
+   fails silently. Note `to-claude` exits 1 on "no marked pane and no claude pane", so
+   seek must be told whether to swallow that code — a non-zero exit becomes a tmux
+   error popup.
