@@ -445,3 +445,26 @@ See [[file:assets/destination-review-2026-08-09.md][the destination review]], bl
 
 Also settle how the alt-screen and normal branches of the `prefix Space` binding stay in
 sync, which three grills deferred.
+
+** TODO Undefined input semantics :grilling:
+:PROPERTIES:
+:CUSTOM_ID: t9
+:ASSIGNEE:
+:BLOCKED_BY:
+:END:
+
+*** Question
+
+Two inputs still have no defined behaviour, and one of them is a question an earlier
+ticket asked and did not answer. See [[file:assets/destination-review-2026-08-09.md][the destination review]], blockers 5 and 12.
+
+1. Whitespace-only and trailing-space queries have undefined grain under the hybrid
+   rule. This was carried through three successive grills, each deferring it to the
+   next. Does a trailing space make the query multi-token, so `w` returns the matched
+   text, or is the query trimmed first and treated as single-token? Does a
+   whitespace-only query fail closed?
+2. The path-shaped test is prose, not the regexp ticket t3's Question explicitly asked
+   for ("and what regexp it uses"). The Resolution answers with "a path containing a
+   slash, or `file.ext:123`, or a bare `name.ext`", which leaves the implementer to
+   decide whether `v0.15.1`, `1.5`, `..`, or a bare `Makefile` route to `--ref` or to
+   `--paste`. Write the literal pattern and name its edge cases.
