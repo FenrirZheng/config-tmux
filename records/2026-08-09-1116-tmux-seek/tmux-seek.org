@@ -97,3 +97,32 @@ interview's open items. Each is a decision, not a discovery:
 
 Answering these fixes what the binary observes and reports, so it blocks the CLI
 surface ticket.
+
+** TODO seek CLI surface and failure contract :grilling:
+:PROPERTIES:
+:CUSTOM_ID: t3
+:ASSIGNEE:
+:BLOCKED_BY: t1 t2
+:END:
+
+*** Question
+
+What exactly does each of the five copy-mode output keys invoke, and how does the
+binary behave when something is missing?
+
+- The argument surface: one subcommand per key, or flags for grain and
+  destination? The nine sibling binaries in `tools/` split roughly into
+  subcommand style (`cc-tape toggle`, `cc-layout snapshot`) and mode-flag style
+  (`to-claude --ref|--paste`); pick one and say why.
+- What the binary reads: `pane_search_string` for the query length, plus
+  `copy_cursor_x` / `copy_cursor_y` / `copy_cursor_word` / `copy_cursor_line`.
+  Which of these does it need per key?
+- The conventions in tools/ARCHITECTURE.md are binding: exit 0 when there is
+  nothing to do, and call `tmux display-message` on every delivery so a mis-send
+  is visible. Restate them as concrete requirements for each key.
+- Fail-closed on no match is already decided; specify what the status line says.
+- Fresh clone, binary not built: `prefix Space` itself still works because the
+  binding is pure tmux, but the output keys would invoke a missing path. Does the
+  binding guard on existence, or is a tmux error popup the accepted outcome?
+- Where the path-shaped test lives that routes a word to `--ref` versus
+  `--paste`, and what regexp it uses.
