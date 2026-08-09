@@ -182,7 +182,7 @@ surface ticket, since =select-word= cannot express the multi-token case.
 ** TODO seek CLI surface and failure contract :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t3
-:ASSIGNEE:
+:ASSIGNEE: claude-grill-session
 :BLOCKED_BY: t1 t2
 :END:
 
