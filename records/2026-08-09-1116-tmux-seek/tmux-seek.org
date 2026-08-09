@@ -37,6 +37,7 @@ Vocabulary: [[file:../../CONTEXT.org][CONTEXT.org]].
 * Not yet specified
 
 - Whether seek's pure functions (the hybrid grain splitter, the path classifier) get table-driven unit tests, given every sibling crate carries #[cfg(test)] while ticket t4 settled on manual verification only
+- The order and acceptance criteria for the eight artifacts the build touches across two repos — the key-table grill defers this to an execution checklist that does not exist yet
 
 * Out of scope
 
