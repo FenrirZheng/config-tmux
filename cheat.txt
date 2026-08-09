@@ -10,8 +10,12 @@
                prefix n / p    next / previous        prefix w   pick from tree
 
   COPY & GRAB  prefix C-t      copy mode (also prefix [ ; leave with q)
-               prefix Space    thumbs: hints every path / URL on screen,
-                               press its letter to copy (matches file.ext:123)
+               prefix Space    seek: search, jump, grab — type any text, Enter,
+                               the cursor lands on the match (runbooks/seek.md)
+               copy-mode w     grab the token under the cursor → clipboard
+               copy-mode l     grab the whole logical line → clipboard
+                               both repeat: the pane stays in copy-mode, and
+                               with no search they grab whatever the cursor is on
                prefix ]        paste tmux buffer
                prefix E        open this pane's FULL scrollback in Emacs
 
@@ -26,11 +30,13 @@
 
   → CLAUDE     prefix m        mark a Claude pane as inbox (border ▶ CLAUDE)
                send it stuff   prefix M clears the mark
-               prefix Space    hint in UPPERCASE: copy AND send as @file:line
-                               (lowercase = copy only, unchanged)
+               copy-mode W     grab the token, copy AND send it — an @-ref
+                               for paths, a plain paste otherwise
+               copy-mode L     grab the line, copy AND send it verbatim
+                               (a prose line is text, not an @-ref)
                copy-mode Y     copy AND send the selection as one paste
                prefix e        copy this pane's output AND send it as an @-file
-               all three land in wl-copy too — Ctrl+Shift+V still works
+               all of these land in wl-copy too — Ctrl+Shift+V still works
                nothing here ever presses Enter — you type the question
 
   BORDER       ● green done    ◐ yellow working    ✋ red needs your input

@@ -152,6 +152,9 @@ sanitize. Note `tmuxlib::message()` expands formats — use
 | `prefix M-s` | snapshot the layout | cc-layout |
 | `prefix m` / `M` | mark / unmark the Claude inbox (stock tmux) | to-claude |
 | copy-mode `Y` | send selection to Claude as one paste | to-claude |
+| `prefix Space` | copy-mode + incremental search prompt (pure tmux, no binary) | seek |
+| copy-mode `w` / `W` | grab the token under the cursor → clipboard+buffer / +Claude | seek |
+| copy-mode `l` / `L` | grab the logical line under the cursor → clipboard+buffer / +Claude | seek |
 
 ## Conventions for every binary here
 

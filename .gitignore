@@ -1,7 +1,6 @@
 # plugin need install
 plugins/tpm/
 plugins/tmux-sensible/
-plugins/tmux-thumbs/
 plugins/tokyo-night-tmux/
 
 # Layout snapshots written by `prefix M-s` — machine state, not config.
