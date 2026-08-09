@@ -412,3 +412,36 @@ contradict other decisions. See [[file:assets/destination-review-2026-08-09.md][
 
 Blocked on the stamp and clipboard tickets because the set of reportable states and the
 set of deliveries are both inputs to what the messages must say.
+
+** TODO Binding placement and load ordering :grilling:
+:PROPERTIES:
+:CUSTOM_ID: t8
+:ASSIGNEE:
+:BLOCKED_BY:
+:END:
+
+*** Question
+
+Three decisions about the tmux config side are undecided or resting on a false premise.
+See [[file:assets/destination-review-2026-08-09.md][the destination review]], blockers 8, 11 and 7.
+
+1. Which file gains `prefix Space`, the five output keys and the load-time guard is
+   never stated. tmux.conf and claude.conf are not interchangeable here: claude.conf is
+   sourced from a *queued* `run-shell` at tmux.conf line 128 precisely because load
+   ordering against TPM is load-bearing in this repo. thumbs currently lives in
+   tmux.conf (lines 38 and 74) while the whole capture rail lives in claude.conf.
+2. Pinning `status-keys` as ticket t4 specified would be silently overwritten. That
+   ticket's rationale says neither `mode-keys` nor `status-keys` is set anywhere in the
+   tracked config. Verified false in effect: `plugins/tmux-sensible/sensible.tmux` line
+   117 runs `tmux set-option -g status-keys emacs`, and TPM executes at tmux.conf line
+   47 — so a plain `set -g status-keys emacs` placed before that line loses. The
+   `mode-keys` half of the claim does hold; it is genuinely underived.
+3. `run-shell` timing is unverified and has no stated fallback. seek issues
+   `send-keys -X cursor-left` back into the same pane from inside a `run-shell`. One
+   correction to the record: the `DoubleClick1Pane` binding cited as house precedent is
+   a tmux *default*, not a binding in this repo — it appears in neither tmux.conf nor
+   claude.conf. The precedent still shows tmux itself inserting `run-shell -d 0.3`
+   there, but the framing in the grill snapshots is wrong.
+
+Also settle how the alt-screen and normal branches of the `prefix Space` binding stay in
+sync, which three grills deferred.
