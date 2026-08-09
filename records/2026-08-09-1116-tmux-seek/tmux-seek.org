@@ -398,7 +398,7 @@ whitespace-bearing queries; trim-or-not stays that ticket's decision.
 ** TODO Clipboard delivery ownership across the output keys :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t6
-:ASSIGNEE:
+:ASSIGNEE: claude-grill-session
 :BLOCKED_BY:
 :END:
 
