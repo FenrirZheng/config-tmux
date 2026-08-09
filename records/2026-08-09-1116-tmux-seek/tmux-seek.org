@@ -43,6 +43,7 @@ t1-t4 Resolutions as superseded wherever it contradicts them.
 - [[#t6][Clipboard delivery ownership across the output keys]] — all four keys write wl-copy plus set-buffer, seek owns both sinks uniformly, wl-copy failure degrades with a changed message, and to-claude's exit code is swallowed
 - [[#t7][Status-line message safety and shape]] — all seek messages use display-message -l (injection structurally impossible), text truncates at 48 via tmuxlib, and the alt-screen suffix rides only on live-search deliveries
 - [[#t8][Binding placement and load ordering]] — seek block lives in claude.conf (loads last), the two pins go in tmux.conf's options area, sensible turns out to re-pin status-keys to the same value, and the prompt label is one conditional binding with a specified two-branch fallback
+- [[#t9][Undefined input semantics]] — seek extracts the whitespace-delimited token itself (copy_cursor_word fragments paths), trims surrounding punctuation and the query, and the path rule is slash or line-number or letter-bearing extension
 
 * Not yet specified
 
@@ -588,7 +589,7 @@ Also recorded for later sessions: the full load-order map — tmux.conf parses, 
 queued run-shells in file order: TPM (47), thumbs (74, to be removed), ace-window
 (89), claude.conf (128, last, independent of TPM).
 
-** TODO Undefined input semantics :grilling:
+** DONE Undefined input semantics :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t9
 :ASSIGNEE: claude-grill-session
@@ -610,6 +611,39 @@ ticket asked and did not answer. See [[file:assets/destination-review-2026-08-09
    slash, or `file.ext:123`, or a bare `name.ext`", which leaves the implementer to
    decide whether `v0.15.1`, `1.5`, `..`, or a bare `Makefile` route to `--ref` or to
    `--paste`. Write the literal pattern and name its edge cases.
+
+*** Resolution
+
+Settled in [[file:grill/2026-08-09-1545-undefined-input-semantics.org][the 2026-08-09-1545 grill snapshot]] — four decisions, six rejected
+alternatives, two open items. The headline decision graduated to
+[[file:../../docs/adr/0004-extract-the-word-token-in-seek-not-copy-cursor-word.org][ADR-0004]].
+
+The two questions this ticket asked, answered — plus one it did not know to ask:
+
+1. Whitespace handling: the query is trimmed before the grain decision (a trailing
+   space is accidental; the search already matched the untrimmed string, so trimming
+   affects grain choice only). A whitespace-only query trims to empty and falls
+   through to ordinary extraction — cursor on whitespace, =seek: nothing under the
+   cursor=, no special case. This replaces the deliver-verbatim default from the
+   origin-stamp redesign.
+
+2. The literal path rule: =--ref= when the token contains =/=, or matches
+   =name.ext:digits=, or is a bare filename whose final dot-segment (1-8 chars)
+   contains at least one ASCII letter; else =--paste=. Worked edges: =main.rs=,
+   =.bashrc=, =foo.tar.gz=, =main.rs:42=, =https://x.io/a= → =--ref=; =v0.15.1=,
+   =1.5=, =Makefile=, =..= → =--paste=.
+
+3. The unasked question: =copy_cursor_word= fragments every path-shaped target —
+   measured, tmux's default =word-separators= contains =. / : -=, so it yields =home=
+   on =/home/fenrir/.tmux/tools/seek.rs=, =v0= on =v0.15.1=, =rs= on =main.rs:42=.
+   seek therefore extracts the whitespace-delimited token itself from
+   =copy_cursor_line= + =copy_cursor_x=, trimming surrounding punctuation
+   (=see main.rs,= → =main.rs=). This supersedes every earlier reference to
+   =copy_cursor_word= in the grain rule, including the one in the origin-stamp
+   redesign's Resolution.
+
+Carried to implementation: the =copy_cursor_x= → line-content index mapping is
+unverified on wrapped lines and wide (CJK) characters — verify both before shipping.
 
 ** TODO Rollback and cutover for the thumbs removal :grilling:
 :PROPERTIES:
