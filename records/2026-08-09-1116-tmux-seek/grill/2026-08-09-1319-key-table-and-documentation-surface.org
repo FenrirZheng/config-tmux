@@ -1,0 +1,78 @@
+#+TITLE: key-table-and-documentation-surface
+
+Grilled within [[file:../tmux-seek.org::#t4][Key-table coverage and documentation surface]].
+
+* Decisions
+
+- =mode-keys emacs= and =status-keys emacs= are both pinned in tmux.conf, instead of
+  double-binding the five output keys across =copy-mode= and =copy-mode-vi=. Neither
+  option appears anywhere in the tracked config today — tmux derives both, and the man
+  page says the default is emacs "unless VISUAL or EDITOR contains 'vi'". A =mode-keys=
+  flip would make all five output keys inert, since the live table would become
+  =copy-mode-vi=; a =status-keys= flip changes the command prompt's cancel key from
+  Escape to =q=, which would silently falsify the Escape-cancel behaviour settled in
+  [[file:2026-08-09-1218-search-prompt-edge-cases.org][the edge-case grill]]. Pinning removes the failure mode; double-binding would only
+  have covered the first half of it.
+- The existing =bind -T copy-mode-vi Y= in claude.conf stays. It becomes redundant once
+  =mode-keys= is pinned, but deleting it is churn on a line that costs nothing and still
+  helps if the pin is ever removed.
+- seek gets a runbook at =runbooks/seek.md=, following the only existing precedent,
+  =runbooks/to-emacs.md=: What it does / Prerequisites / Install (fresh machine) /
+  Verify / Troubleshooting / an alt-screen section / Update. That file already carries an
+  "Alt-screen panes capture one screen only" section for the same constraint seek has,
+  and seek adds three more caveats — the config reload after building, the origin-stamp
+  false negative, and the hard dependency on =wl-copy= — which do not fit a 40-line
+  cheat sheet.
+- cheat.txt's two ~prefix Space~ entries are rewritten per key rather than kept at their
+  current length, growing from four lines to seven. The sheet is what gets opened when
+  something has been forgotten, and the most forgettable part is which letter takes
+  which grain.
+- ARCHITECTURE.md gains one row in each table: =seek= in Crates, and a single Key
+  bindings row covering ~prefix Space~ plus the five copy-mode keys — matching how
+  =copy-mode Y= occupies one row today.
+- The fresh-machine build is documented in the runbook's Install section *and* as a new
+  step in the =~/CLAUDE.md= fresh-clone bootstrap covering the whole =tools/= workspace.
+  Checked: the eight existing steps never mention =~/.tmux/tools=, so after a fresh clone
+  none of the ten binaries are built and every =cc-*= and =to-*= binding is dead. That
+  gap predates seek; seek's load-time guard would merely make its own five keys the only
+  ones that say so.
+- Verification is manual, written into the runbook's Verify section in the shape
+  to-emacs.md uses — shell one-liners plus a prose end-to-end walk plus a boundary case.
+  The probe scripts stay in =assets/scripts/= as ad-hoc measurement tools rather than a
+  maintained harness.
+
+* Rejected alternatives
+
+- Double-binding the five keys across =copy-mode= and =copy-mode-vi=, the way
+  claude.conf treats =Y= — ten lines instead of five, it covers no future key
+  automatically, and it does nothing about =status-keys=, which is half the exposure.
+- Binding only =copy-mode= and accepting the fragility — the failure is total and
+  silent: every output key stops responding.
+- Skipping the runbook and relying on the cheat sheet entry plus the ARCHITECTURE rows —
+  no room for the four caveats.
+- Keeping cheat.txt at its current line count with a one-for-one text swap.
+- Listing all six bindings as separate rows in ARCHITECTURE.md's Key bindings table.
+- Documenting the build only in the runbook and leaving the parent bootstrap gap alone —
+  that accepts nine other tools staying dead on a fresh machine.
+- Adding a bootstrap section to this repo's README.md instead of the parent's — README
+  currently has only =runbooks= and =plugins= sections and is not where a fresh-clone
+  reader starts.
+- An automated verification harness built on the fifo-fed client rig — that rig broke
+  twice while being used in this effort, once from a missing reader on the fifo and once
+  from =pkill -f= matching its own command line. A verifier that needs its own debugging
+  is not a verifier.
+
+* Open items
+
+- The =~/CLAUDE.md= bootstrap step lands in the =$HOME= repo, not this one — a separate
+  commit, followed by blessing this submodule's gitlink there. Resolved when the
+  execution checklist is worked.
+- Pinning =status-keys= changes nothing today but constrains every command prompt in the
+  config, including =prefix :=, the =g= goto-line prompt and the =f= / =F= jump prompts.
+  Accepted rather than open, recorded here so the constraint is not rediscovered.
+- =run-shell= timing is still unverified — carried from the CLI surface grill.
+- A whitespace-only query, or one with a trailing space, still has undefined grain —
+  carried from the edge-case grill.
+- The ~prefix Space~ binding has two branches, alt-screen and normal, that must stay in
+  sync by hand. Note these are separate bindings from the load-time guard's =if-shell=,
+  which wraps the five output keys, so the two branchings do not multiply.
