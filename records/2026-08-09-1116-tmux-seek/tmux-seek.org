@@ -36,8 +36,6 @@ Vocabulary: [[file:../../CONTEXT.org][CONTEXT.org]].
 
 * Not yet specified
 
-- How seek gets verified end to end: the tmux command prompt can only be driven by a fifo-fed client, and OSC 52 clipboard delivery only fires while the pane is visible in the client's current window
-
 * Out of scope
 
 Reinstating a zero-input mode that labels every path on screen. The loss of that
