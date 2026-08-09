@@ -126,3 +126,27 @@ binary behave when something is missing?
   binding guard on existence, or is a tmux error popup the accepted outcome?
 - Where the path-shaped test lives that routes a word to `--ref` versus
   `--paste`, and what regexp it uses.
+
+** TODO Key-table coverage and documentation surface :grilling:
+:PROPERTIES:
+:CUSTOM_ID: t4
+:ASSIGNEE:
+:BLOCKED_BY:
+:END:
+
+*** Question
+
+Where the new binding has to be registered, and how wide it reaches:
+
+- Do the five output keys bind in `copy-mode-vi` as well as `copy-mode`?
+  `mode-keys` is emacs here, yet claude.conf line 78 double-binds `Y` in both
+  tables defensively. Follow that precedent or not.
+- cheat.txt names `prefix Space` twice — once under `COPY & GRAB` as the thumbs
+  hint mode, once under `→ CLAUDE` as the uppercase-hint send path. Both need
+  replacing, and the repo's one-prefix-per-layer policy makes registration there
+  mandatory rather than optional. Decide the wording for both sites.
+- tools/ARCHITECTURE.md carries a Crates table and a Key bindings table; settle
+  the rows `seek` adds to each.
+- runbooks/ holds exactly one file, to-emacs.md, written as install / verify /
+  troubleshoot (commit 0859d26). Does seek get the same treatment, or is the
+  cheat sheet entry plus the ARCHITECTURE rows enough?
