@@ -45,6 +45,7 @@ t1-t4 Resolutions as superseded wherever it contradicts them.
 - [[#t8][Binding placement and load ordering]] — seek block lives in claude.conf (loads last), the two pins go in tmux.conf's options area, sensible turns out to re-pin status-keys to the same value, and the prompt label is one conditional binding with a specified two-branch fallback
 - [[#t9][Undefined input semantics]] — seek extracts the whitespace-delimited token itself (copy_cursor_word fragments paths), trims surrounding punctuation and the query, and the path rule is slash or line-number or letter-bearing extension
 - [[#t10][Rollback and cutover for the thumbs removal]] — delete the thumbs tree at cutover as originally decided, make the cutover one atomic commit so rollback is one git revert, and record the auto-rebuilding restore recipe in the runbook
+- [[#t11][The specification artifact and the scope boundary]] — the records are the specification (no plans/seek.md), the HOME bootstrap step stays as an independent rider, the recorded driver is jump-to-arbitrary-text, and the three pure functions get table-driven tests
 
 * Not yet specified
 
@@ -695,7 +696,7 @@ The two questions this ticket asked, answered:
    found missing; it is safe because the execution checklist places the cutover after
    seek passes the runbook Verify.
 
-** TODO The specification artifact and the scope boundary :grilling:
+** DONE The specification artifact and the scope boundary :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t11
 :ASSIGNEE: claude-grill-session
@@ -726,3 +727,33 @@ The Destination promises "a written specification", and no artifact holds it. Se
 Also in scope here: README.md indexes runbooks and would need a line for
 `runbooks/seek.md`, and cheat.txt line 33's "all three land in wl-copy too" invariant is
 load-bearing for a ticket t3 consequence while sitting outside t4's rewrite scope.
+
+*** Resolution
+
+Settled in [[file:grill/2026-08-09-1611-specification-artifact-and-scope.org][the 2026-08-09-1611 grill snapshot]] — the map's closing grill: both ticket
+questions plus all five remaining fog lines. No ADR: the one candidate
+(records-as-spec) fails the hard-to-reverse gate, since a plans/ distillation can be
+written any time.
+
+The two questions this ticket asked, answered:
+
+1. The records are the specification. ARCHITECTURE.md's =plan= cell for seek reads
+   =records/2026-08-09-1116-tmux-seek=, and the runbook's design-rationale link points
+   at this map instead of a =plans/*.md=. No consolidated document is written — the
+   =plans/= docs are, per ARCHITECTURE.md's own intro, "written independently and
+   collide", while this map passed measurement and a review gate; a distilled copy is
+   the drift-prone summary the house discipline forbids.
+
+2. The =$HOME= scope: the =~/CLAUDE.md= bootstrap step covering the whole =tools/=
+   workspace stays, as an independent rider — its own commit in the =$HOME= repo,
+   listed in the execution checklist, never blocking the cutover. It simultaneously
+   makes to-emacs.md's "Steps 1-2 are part of the home repo's normal bootstrap" claim
+   true, resolving the documented contradiction.
+
+Fog absorbed, per the snapshot: the execution checklist is capture-tasks handoff
+material (the map holds only the decided ordering constraints); the removal driver is
+now non-circular — thumbs cannot jump to arbitrary text, only to regexp-matched
+targets, and "type any text" was the original request; the three pure functions get
+table-driven unit tests with the worked edge table as fixture; the guard's
+one-directionality is accepted and both stale directions go in runbook
+Troubleshooting; the runbook pins the reload command like to-emacs.md step 3.
