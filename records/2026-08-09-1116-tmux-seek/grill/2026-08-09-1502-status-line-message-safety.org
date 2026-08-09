@@ -1,0 +1,50 @@
+#+TITLE: status-line-message-safety
+
+Grilled within [[file:../tmux-seek.org::#t7][Status-line message safety and shape]].
+
+* Decisions
+
+- Every =display-message= seek issues carries the =-l= flag, which prints the message
+  unchanged — measured live: with =-l=, =literal:#{pane_pid}= renders verbatim; without
+  it, the PID expands. Format injection becomes structurally impossible on the message
+  path rather than filtered. =sanitize_format()= is deliberately *not* used here, with
+  the reason recorded: ARCHITECTURE.md line 121's mandate covers text entering a format
+  context (like =@claude_activity= landing in border formats), and since the origin
+  stamp was deleted seek writes no pane options — with =-l= there is no format context
+  left anywhere in seek. A filter would also rewrite grabbed text that genuinely
+  contains =#{=, making the receipt lie about what was delivered.
+- The =<text>= portion of every message is truncated to 48 characters with
+  =tmuxlib::truncate= (char-boundary, appends =…=) — the house precedent is
+  =@claude_activity='s "≤48 chars" contract in ARCHITECTURE.md's per-pane option table.
+  The message is a receipt confirming what was grabbed, not a display of the content.
+- The alt-screen suffix =; ⚠ alt-screen TUI: visible screen only= rides on =w= / =l=
+  messages only when *both* =search_present=1= and =alternate_on=1= — the warning
+  describes search coverage, which is meaningless in grabber mode where the key takes
+  what is under the cursor. The prompt-label half of the warning (from the edge-case
+  grill) is unchanged; this narrows only the delivery-time half.
+- The message table in full: =→ CLIP <text≤48>= on =w= / =l= success; =→ BUFFER
+  <text≤48> (wl-copy failed)= when the clipboard write fails; =seek: nothing under the
+  cursor= on an empty grab (staying in copy-mode); silence on =W= / =L= where to-claude
+  speaks.
+- The load-time guard's stub message is fixed as =seek: not built — cd ~/.tmux/tools &&
+  cargo build --release= — the CLI-surface grill decided the guard exists but never
+  gave it a string; it is a member of the same message family and lands here.
+
+* Rejected alternatives
+
+- =-l= plus =sanitize_format= as belt and braces — the filter rewrites grabbed text
+  containing =#{= or =%=, so the receipt would not match the delivered bytes.
+- Sanitizing without =-l= — keeps the message inside a format context and trusts a
+  character blocklist to be complete forever.
+- 80-character truncation, and word-untruncated / line-truncated split — no house
+  precedent, and two rules where one suffices.
+- Suffix on every alt-screen delivery regardless of search — in grabber mode the
+  "visible screen only" wording answers a question nobody asked.
+- Dropping the delivery-time suffix entirely — the prompt label is transient and gone
+  by the time the key is pressed; the earlier both-places decision stands, scoped.
+
+* Open items
+
+- The longest composed message (=→ BUFFER= + failure note + alt-screen suffix, ~110
+  characters) can overflow a narrow client's status line — cosmetic, accepted; noted
+  for the runbook rather than engineered around.
