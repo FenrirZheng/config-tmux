@@ -310,3 +310,39 @@ One decision reached past the four questions: =status-keys emacs= is pinned alon
 =mode-keys=. It governs the command prompt, where a vi value changes the cancel key from
 Escape to =q= — which would silently falsify the Escape-cancel behaviour this map
 already recorded.
+
+** TODO Origin stamp contract redesign :grilling:
+:PROPERTIES:
+:CUSTOM_ID: t5
+:ASSIGNEE:
+:BLOCKED_BY:
+:END:
+
+*** Question
+
+The destination review found four defects in the one @seek_origin mechanism, which is
+a redesign pass rather than four patches. All four are in
+[[file:assets/destination-review-2026-08-09.md][the 2026-08-09 destination review]], blocker 3.
+
+1. Consumed before it can be read. Both this map and the 1218 grill snapshot say the
+   stamp is "consumed with `set -p -u` and consumed *before* seek acts". Read literally
+   the unset precedes the read, leaving nothing to compare the cursor against. The
+   intent was read, then unset, then act — the text never says so.
+2. It cannot distinguish "no search happened" from "the search found nothing". Both
+   leave cursor == stamp — measured: a non-matching query leaves the cursor unmoved —
+   yet the message set specifies two different strings for those two states.
+3. A cancelled search reads as live. Measured during the effort: Escape leaves the
+   cursor on the match (x=8 y=20 both before and after), so pressing `w` after
+   cancelling grabs the match the user just abandoned.
+4. One-shot consumption makes the five keys single-use. A second output key after the
+   same search finds no stamp, silently degrades to grabber grain, and for a
+   multi-token query returns only the first word.
+
+Also fold in two should-fix items the review attached to the same mechanism: whether
+re-pressing an output key is supported at all, and that the false-negative rationale
+assumed entry at the pane bottom — `prefix C-t` (tmux.conf:19) followed by
+`prefix Space` starts mid-screen on real text, where a match on the origin cell stops
+being improbable.
+
+Decide the liveness contract as a whole. If the stamp survives, say exactly when it is
+written, read and cleared, and what each of the three fail-closed states looks like.
