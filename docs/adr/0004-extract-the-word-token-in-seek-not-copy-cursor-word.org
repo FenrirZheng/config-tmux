@@ -82,3 +82,33 @@ makes it unit-testable alongside the path classifier.
 
 - Related to: [[file:0003-detect-search-liveness-via-search-present.org][ADR-0003]] — the same pattern: a tmux primitive measured unfit and replaced
 - Influenced by: [[file:../../records/2026-08-09-1116-tmux-seek/grill/2026-08-09-1545-undefined-input-semantics.org][the input-semantics grill]], which carries the measurements
+
+* Amendments
+
+This ADR is accepted and its decision — extract the token in seek rather than trusting
+=copy_cursor_word= — stands unchanged. The note below replaces the *source* the extraction
+reads from, which this ADR named before it had been measured.
+
+** [2026-08-09] The line comes from =capture-pane -J=, not =copy_cursor_line=
+
+Every reference here to reading =copy_cursor_line= for the line content is superseded.
+=copy_cursor_line= is a **screen** line, so a token wrapped across two rows is truncated
+at the wrap point and simply unreachable — which defeats this ADR's own purpose for
+exactly the long paths that motivated it. The "unverified on wrapped lines and wide (CJK)
+characters" caveat in Decision Outcome was therefore not a verification task but an
+undecided design point.
+
+Settled by measurement on tmux 3.5a, 2026-08-09, in a 40-column pane:
+
+- =capture-pane -p -J= over the visible pane yields logical lines; a 59-column path
+  occupying screen rows 1-2 comes back as joined line 1.
+- =-J= joins only *inside* the requested range, so =capture-pane -p -J -S 2 -E 2= returns
+  the fragment =oss/rows/main.rs:42= — capturing just the cursor's row defeats the join.
+- A joined line of display width =w= occupies =max(1, ceil(w / pane_width))= screen rows,
+  which reconstructs the screen-row → logical-line mapping exactly.
+
+=copy_cursor_x= is likewise a **cell column**, not a byte or char offset: a CJK character
+occupies two cells, so the mapping runs through a display-width table.
+
+Current text: [[file:../../records/2026-08-09-1116-tmux-seek/tmux-seek.org][the tmux-seek map]], section Current contract →
+Token extraction.

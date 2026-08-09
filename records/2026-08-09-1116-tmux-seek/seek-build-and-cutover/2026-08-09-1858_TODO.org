@@ -1,0 +1,280 @@
+#+TITLE: TODO — seek: build the crate and cut over from tmux-thumbs (live progress log)
+
+Task list: [[file:2026-08-09-1858_TASK.org][TASK]]. Append-only
+progress/decision notes below. Write Decisions/notes FOR the next fresh
+session, which has seen nothing of this one: traps beat activity logs.
+"What I did" is history; "what you must watch out for" is the payload.
+
+* Current focus
+
+The crate is written, builds clean and passes 14 unit tests; all documentation is in
+place. Everything now waits on **two decisions only a human can make**:
+[[file:2026-08-09-1858_TASK.org::#T20][T20]] (does =prefix C-Space= survive the cutover?)
+and the sign-off on [[file:2026-08-09-1858_TASK.org::#T15][T15]] itself. One live-keyboard
+check remains, [[file:2026-08-09-1858_TASK.org::#T3][T3]].
+
+* Next steps
+
+1. Answer T20 — it blocks the cheat.txt rewrite and the cutover.
+2. Do T3 at a real keyboard: one ~prefix Space~ in a normal pane and one in an alt-screen
+   pane, checking that exactly one prompt appears.
+3. Run the T14 Verify matrix (nine rows, now written out in
+   [[file:../../../runbooks/seek.md][the runbook]]).
+4. Only then T15, and only with sign-off — it deletes a gitignored tree.
+
+* Decisions / notes
+
+- [2026-08-09 Sun] — **Read =* Current contract= in the map, not the tickets.** The
+  tickets t1-t11 are the rationale trail and several of them describe mechanisms that no
+  longer exist (the =v= key, =@seek_origin=, =copy_cursor_word=, a five-key binding set,
+  three fail-closed states). Superseded passages are marked in place, but the safe habit
+  is: Current contract wins, always.
+
+- [2026-08-09 Sun] — **Two blockers in this map were "closed" by claims their own
+  measurements refuted.** t5 said repeat grabs work *and* that delivery exits copy-mode;
+  the 1443 snapshot it cites measured =search_present= as 0 after re-entering copy-mode,
+  so those cannot both hold. t8 said the =run-shell= race was dissolved because seek
+  issues no =send-keys=, while ADR-0003 specified a trailing =cancel=. The lesson for the
+  next session: when a ticket says a review finding is closed, check the finding against
+  the *source snapshot*, not against the ticket's own summary of it.
+
+- [2026-08-09 Sun] — **Delivery stays in copy-mode** (user decision). This is deliberate
+  divergence from the house =copy-pipe-and-cancel= style, and it is what makes the four
+  keys repeatable across one search. If a future session "fixes" seek to cancel copy-mode
+  for consistency with the siblings, it silently makes every key single-use and makes a
+  second keypress type a literal =w= / =W= / =l= / =L= into the shell.
+
+- [2026-08-09 Sun] — **Repeatability itself is inferred, not measured.** None of the 1443
+  snapshot's six measured states was "grab twice without leaving copy-mode". Verify
+  assertion 8 (T14) is the first real check. Do not treat it as a formality.
+
+- [2026-08-09 Sun] — **The line comes from =capture-pane -J=, not =copy_cursor_line=**
+  (user decision), and =copy_cursor_x= is a *display column* — convert through display
+  width, not bytes and not chars. ADR-0004 still says =copy_cursor_line=; T17 fixes that.
+  A CJK line will be silently wrong if this is implemented from the ADR instead of the map.
+
+- [2026-08-09 Sun] — **=tmuxlib::message()= must not be used** (tools/tmuxlib/src/lib.rs
+  line 356). It calls =display-message= without =-l=, and the entire format-injection
+  argument rests on =-l= being present. Reaching for the house helper is the obvious move
+  and it silently re-opens a blocker that took a review round to find.
+
+- [2026-08-09 Sun] — **=tmux set-buffer -- <text>=, always.** tmux.conf lines 57 and 68
+  already carry the =--=; every prose reference to =set-buffer= in the map's older tickets
+  omits it. A grabbed token like =--release= is parsed as a flag without it.
+
+- [2026-08-09 Sun] — **Rollback needs the =unbind= lines or it does not roll back.**
+  Verified this session: =tmux list-keys -T copy-mode= binds none of =w=, =W=, =l=, =L= by
+  default, and =source-file= is additive — so reverting the config and re-sourcing leaves
+  all four seek keys live in the running server. The recipe in t10 now has them; do not
+  trim them as noise.
+
+- [2026-08-09 Sun] — **Rollback needs network twice**, not "no network, no re-clone" as
+  the map originally read. TPM re-clones from GitHub and =tmux-thumbs-install.sh= is
+  interactive (split, keypress, Compile-or-Download menu). There is no offline path back
+  from the cutover.
+
+- [2026-08-09 Sun] — Delta review run (T1) and the nine blockers closed (T2). Coverage: 6
+  reviewers, 0 skipped, 0 failed; the Security lens was re-dispatched despite the delta
+  rule because the previous run's own skip audit recorded that skipping it was a mistake —
+  it then produced two of the nine blockers. Findings:
+  [[file:../.review-plan/tmux-seek.org/20260809-1623/findings.md][20260809-1623/findings.md]].
+
+- [2026-08-09 Sun] — **The =$HOME= rider (T18) was already done, and the map's premise for
+  it is stale.** Negative-controlling T18's check found it passing: =~/CLAUDE.md='s
+  numbered Fresh-clone bootstrap carries =cd ~/.tmux/tools && cargo build --release= as
+  step 5. The map's t4 and t11 both argue from "the eight existing steps never mention
+  =~/.tmux/tools=" — the file has since been restructured (nine steps now, and =.tmux/=
+  itself became a submodule). Flipped T18 to DONE and corrected the map's artifact table.
+  Trap for the next session: t4/t11 contain more reasoning about the =$HOME= repo that
+  predates that restructure; re-read =~/CLAUDE.md= before trusting any of it.
+
+- [2026-08-09 Sun] — T18's original check (=rg -q 'cd ~/.tmux/tools' /home/fenrir/CLAUDE.md=)
+  was fail-open on *location*: the =.tmux= section's own "Fresh parent clone" bullet
+  matches the same string, so it would have passed with the numbered bootstrap untouched.
+  Tightened to anchor on the =## Fresh-clone bootstrap= heading. Generalise: when the
+  deliverable is "a line in a specific section", grep the section, not the file.
+
+- [2026-08-09 Sun] — **The cutover is bigger than the map said, and it costs a feature.**
+  =tmux.conf= has grown since t10 was written — thumbs config is now at lines 38, 63, 66,
+  73, *80*, *93*, 96, not "38, 57, 60-68, 74". Two entries the map never mentions:
+  =@thumbs-multi-command= (multi-pick) and =bind C-Space run-shell ~/.tmux/thumbs-line.sh=
+  — a line-grain picker that labels *every visible line* for prose that token hints cannot
+  see. Its wrapper is **untracked**, so a revert would not restore it either. seek's =l= /
+  =L= are not a replacement: they need a search first. Raised as T20; it blocks T12 and
+  T15. Note =cheat.txt= and =tmux.conf= were already dirty at session start — this is
+  uncommitted work in progress, which is why the map never saw it.
+
+- [2026-08-09 Sun] — **=command-prompt -p= takes a comma-separated LIST of prompts.**
+  Straight from the man page. t8's chosen primary binding used
+  =-p "#{?alternate_on,(seek ⚠ visible screen only),(seek)}"=, which has two commas, so
+  tmux would ask for three prompts — regardless of the format-expansion question everyone
+  was focused on. The two-branch =if-shell= that t8 filed as the *fallback* is now the
+  primary. Lesson: the open item was framed as "does =-p= expand formats?" and nobody
+  asked what =-p='s argument *is*.
+
+- [2026-08-09 Sun] — **=capture-pane -J= joins only inside the requested range**, and the
+  joined line index is not =copy_cursor_y=. Measured in a 40-column pane: a 59-column path
+  spans screen rows 1-2 but is joined line 1, and =-J -S 2 -E 2= returns the bare
+  fragment. The mapping that works: a joined line of display width =w= occupies
+  =max(1, ceil(w / pane_width))= screen rows. Derive it from the joined boundaries, *not*
+  from "this row is full so the next wrapped" — that heuristic swallows the row after any
+  line exactly =pane_width= wide.
+
+- [2026-08-09 Sun] — **A unit test caught an ambiguity in the path rule.** =main.rs:x=
+  satisfied "a bare filename whose final dot-segment (1-8 chars) contains a letter" —
+  its final dot-segment is =rs:x=. "Bare filename" now explicitly means no remaining
+  colon. Worth knowing that the worked-edge table in the map does not cover it; the test
+  file does.
+
+- [2026-08-09 Sun] — =tmuxlib= gained =message_literal()=. Use it, never =message()=, for
+  anything derived from pane text. The doc comment on =message()= now says so too, so the
+  next tool author does not have to know this from a review.
+
+- [2026-08-09 Sun] — **=review(agent): /code-review= discharged for T7 and T8.** Scope:
+  the =tools/seek/= diff plus =tools/tmuxlib/src/lib.rs=. Verdict: 5 findings — 1 critical,
+  1 high, 1 medium, 2 low. **All five fixed**; no blocker waived. Test count 14 → 17, each
+  new test pinning one finding. The reviewer also verified and cleared four things
+  explicitly: =display-message -l= exists on 3.5a and every message goes through it,
+  =set-buffer --= guards the leading-dash case, =read_state='s length guard cannot
+  underflow, and the classifier matches the worked-edge table including the =main.rs:x=
+  clarification.
+
+- [2026-08-09 Sun] — **The critical one is worth internalising: =copy_cursor_y= is
+  viewport-relative, =capture-pane -S 0= is not.** The first implementation captured
+  =-S 0 -E pane_height-1=, which is the live un-scrolled bottom of the pane, and
+  =capture-pane= has no idea the copy-mode view is scrolled. So *every grab after a
+  scrollback search* — the dominant path, the entire point of the tool — read a different
+  line and reported success. Reviewer's measurement: after searching =needle005=,
+  =scroll_position=165=, and the grab delivered =needle060= under a confident
+  =→ CLIP needle060=. The fix is to capture
+  =-S -<scroll_position> -E <pane_height-1-scroll_position>=. Nothing failed closed here;
+  three independent guards (=search_present=, the match test, the extractor) all passed on
+  the wrong text. When a tool reads a coordinate from one subsystem and text from another,
+  check that both are in the same frame of reference.
+
+- [2026-08-09 Sun] — Second wrong-frame bug, same family: row counting used
+  =ceil(cells / pane_width)=. tmux will not split a double-width character across a row
+  boundary — it wastes the last cell and wraps — so 41 × =中= in a 41-column pane is
+  three rows, not the two the division predicts, and every line below shifts. Row layout
+  is now walked cell by cell. Fixture-based tests hid this: the original measurement
+  happened to use lines where the waste was zero.
+
+- [2026-08-09 Sun] — =classify_path= was being applied to whatever was delivered, so
+  =L= on =cargo build --release && ./target/foo= routed to =--ref= and to-claude typed
+  =@cargo build --release && ./target/foo= into the composer. Only an extracted *token*
+  is classified now; line and query both take =--paste=. The contract said "Line grain
+  always uses =--paste=" — it was a rule about the router that the router did not follow.
+
+- [2026-08-09 Sun] — **=review(agent): /review-plan= discharged for T9** (runbooks/seek.md).
+  Coverage: 1 reviewer — Operability → agy/Gemini; 5 dimensions skipped, skips audited
+  =TRIAGE-AUDIT: OK=. Verdict: 1 blocker, 1 should-fix, 3 nits. All fixed; no blocker
+  waived. Findings:
+  [[file:../../../runbooks/.review-plan/seek.md/20260809-1943/findings.md][20260809-1943/findings.md]].
+  Note the line had been flipped DONE before the review ran — that was a process miss, the
+  review was run afterwards rather than skipped.
+
+- [2026-08-09 Sun] — **A rollback step you cannot paste is not a rollback step.** The
+  recipe ended with =prefix I= and =prefix Space= — real actions, but keypresses. Worse,
+  =tmux-thumbs-install.sh= can never be a pasteable step: it blocks on two
+  =read -rs -n 1= prompts and a =select= menu. Its *Compile* branch is only
+  =cargo build --release --target-dir=target=, so the whole installer is bypassable, and
+  TPM ships =plugins/tpm/bin/install_plugins= for the clone. The recipe is now six
+  numbered commands. Generalise: when a runbook step names a keypress or a wizard, check
+  whether the thing underneath has a scriptable entry point — it usually does.
+
+- [2026-08-09 Sun] — **Most of the Verify matrix turned out to be scriptable after all.**
+  =tmuxlib= exposes =CC_TMUX_SOCKET=, which redirects every tmux call a tool makes to a
+  named server — the seam these crates were built with and which nobody had used for seek.
+  With that plus a stubbed =wl-copy=,
+  [[file:../assets/scripts/verify-seek-headless.sh][verify-seek-headless.sh]] runs 11 grabber-mode assertions against a
+  throwaway server: **11/11 on 2026-08-09**. I had written T14 off as "needs a live
+  client" when only *part* of it does. Lesson: when a task is blocked by an environment
+  limitation, check whether the limitation covers the whole task or only some assertions.
+
+- [2026-08-09 Sun] — **Copy-mode search cannot be driven programmatically. Confirmed six
+  ways; stop trying.** =send-keys -X search-backward "text"= sets =pane_search_string= but
+  leaves =search_present=0= and does not move the cursor — with *and* without an attached
+  client. Same for =search-backward-incremental=, =search-backward-text= and
+  =search-again=. Driving the real keystrokes (=C-r=, text, Enter) also fails, because the
+  prompt belongs to the *client* and =send-keys -t <pane>= does not reach it. And
+  =#{client_prompt}= does not exist, so there is nothing to observe but the client's
+  rendered screen. Two rigs failed during the design effort; four more failed today. Any
+  future session tempted to automate the search half should read this note first.
+
+- [2026-08-09 Sun] — =wl-copy= **forks by default** (=-f, --foreground= is opt-in), so the
+  process seek =wait()=s on is the short-lived parent. The review's "a hung wl-copy stalls
+  the key binding" concern does not apply to the default invocation; no wait bound added.
+
+- [2026-08-09 Sun] — **The binding block is written and verified to parse.**
+  [[file:../assets/seek-bindings.conf][seek-bindings.conf]] holds the guard, the ~prefix Space~ prompt and
+  the four output keys, ready to paste into claude.conf at cutover. Sourcing it on a
+  throwaway server proves: one =prefix Space= binding (not three — the comma trap would
+  have shown), escaping intact through =list-keys=, four =copy-mode= keys with
+  =#{pane_id}=, and both guard branches correct (unbuilt → only the stub binds, the four
+  keys withheld). A parse cannot show whether the =-p= label *renders*, which is all T3
+  still owes.
+
+- [2026-08-09 Sun] — **tmux-in-tmux is the technique that unlocks all of this.** Six rigs
+  failed because =send-keys -t <pane>= delivers to the pane's *process* and bypasses tmux's
+  key table — so it can neither fire a binding nor type into a prompt. Run the inner
+  server's client **inside a pane of an outer server** and the inner client's tty becomes an
+  ordinary pane: =send-keys= on the outer server then feeds it real keystrokes (prefix,
+  prompt text, Enter), and =capture-pane= on the outer pane reads back whatever the inner
+  client renders, status line included. That single trick closed T3 and the whole live half
+  of T14. If a future session concludes "copy-mode search cannot be automated", it has
+  stopped one step early.
+
+- [2026-08-09 Sun] — **I had the clipboard caveat wrong, and it made a testable thing look
+  manual.** I wrote that seek's clipboard write "only works when the pane is visible in the
+  client's current window". That condition belongs to the =copy-pipe= / OSC 52 route, which
+  [[file:../tmux-seek.org::#t1][t1]] measured and *rejected*; seek shells out to =wl-copy=
+  directly, which t1's own resolution records as working regardless of visibility and with
+  no client attached. Consequence: the degrade path needs neither a human nor =sudo= — seek
+  resolves =wl-copy= through =PATH=, so a stub exiting 1 is the failure. Lesson: when a
+  caveat is inherited from a rejected alternative, it can quietly disqualify work that is
+  actually easy.
+
+- [2026-08-09 Sun] — **T14 assertion 29/29: the wl-paste round-trip is now verified, and
+  it was automatable after all.** The block was never Wayland (the visibility caveat had
+  already been retracted) — it was "a test would overwrite the real clipboard". Save →
+  test → restore closes that: [[file:../assets/scripts/verify-seek-clipboard.sh][verify-seek-clipboard.sh]] snapshots the
+  clipboard (aborting unless it holds plain text, so an image is never lost), runs a real
+  grab with the REAL =wl-copy= against a =CC_TMUX_SOCKET= throwaway server, asserts
+  =wl-paste --no-newline= returns the token, and restores on EXIT. 1/1 PASS
+  [2026-08-09 Sun], restore confirmed byte-identical. The Verify matrix is fully green;
+  nothing about T14 needs a keyboard.
+
+- [2026-08-09 Sun] — **T20 ruled by the user: accept the loss.** =prefix C-Space=,
+  multi-pick and the path-hint mode all go with the plugin tree; a seek-native every-line
+  picker would be a new effort. Recorded in the map's Out of scope and the cutover-scope
+  note, which also now carries the deletion rationale the review said was missing. t10's
+  stale line list is corrected in place: the real footprint is tmux.conf line 38 plus the
+  whole block at lines 50-96, **plus the untracked =~/.tmux/thumbs-line.sh=** (dead weight
+  once its binding is gone — its deletion is part of the cutover, and being untracked it is
+  the one thing even a revert cannot bring back).
+
+- [2026-08-09 Sun] — **T19 discharged.** The four items needing a ruling (#10 CJK grain,
+  #18 deletion driver via T20, #20 grabber-mode tell, #21 W/L receipt) were put to the
+  user and all ruled keep-as-shipped / accept-loss; #17's remaining half was closed by
+  adding the snapshot-only non-goals to the map's Out of scope. Every should-fix and nit
+  in [[file:../.review-plan/tmux-seek.org/20260809-1623/dispositions.md][dispositions.md]] now has a recorded disposition; the only line
+  still open there is cheat.txt:33's wording, which is T12's acceptance criterion, not a
+  review item.
+
+- [2026-08-09 Sun] — **T15 sign-off recorded.** The user approved "Proceed with the
+  cutover" with the full irreversible scope spelled out: delete =plugins/tmux-thumbs/= and
+  =thumbs-line.sh= (untracked; a copy of the wrapper is archived at
+  [[file:../assets/thumbs-line.sh.retired][assets/thumbs-line.sh.retired]]), reload the live server, four commits
+  ending in the atomic cutover commit. Gate state at sign-off: 29/29 Verify assertions,
+  17/17 unit tests, both agent reviews discharged, T1-T14 and T16-T20 all DONE.
+
+* Blockers
+
+- **T20 — does =prefix C-Space= survive?** A user decision about losing a working feature.
+  Blocks the cheat.txt rewrite (T12) and the cutover (T15). Nothing else is waiting on it.
+- ~~T3~~ *closed 2026-08-09* — both if-shell branches verified via tmux-in-tmux.
+- ~~T14's automation~~ *closed 2026-08-09* — 28 of 29 assertions automated and passing. The
+  one left is =wl-paste= returning the text, manual only to avoid overwriting the real
+  clipboard.
+- **T15 — sign-off.** Deliberately not done: it deletes a gitignored tree whose restore
+  path needs network twice.

@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+#
+# thumbs "line grain" — prefix C-Space.
+#
+# Stock tmux-thumbs (prefix Space) only hints *tokens*: paths, URLs, SHAs,
+# file.ext:line. Prose that is not one of those patterns gets no hint at all,
+# so a sentence, a table row or a wrapped bullet is unreachable from the
+# keyboard. This wrapper runs the same picker with one custom regexp that
+# matches a whole trimmed line, so every line on screen gets exactly one hint.
+#
+# Mechanics ([execute_thumbs](plugins/tmux-thumbs/src/swapper.rs)): tmux-thumbs re-reads `tmux show
+# -g` on every invocation and forwards each `@thumbs-regexp-*` as `--regexp`.
+# So a temporary `set -g` here is enough to change the grain — no fork, no
+# rebuild of the TPM-managed plugin (whose edits `prefix + U` would erase).
+#
+# Two options are swapped and restored:
+#
+#   @thumbs-regexp-1        file.ext:line  ->  whole line
+#     Custom patterns outrank the built-ins, and the line pattern always starts
+#     at or before any token on that line, so it wins the lowest-index race in
+#     [`State::matches`](plugins/tmux-thumbs/src/state.rs) and shadows them all. Replacing regexp-1 rather than
+#     adding a regexp-9 avoids the one tie the ordering does not settle in our
+#     favour: `tmux show -g` emits options alphabetically, so on a line that
+#     *begins* with a file.ext:line token, regexp-1 would be offered first.
+#
+#   @thumbs-upcase-command  to-claude --ref  ->  to-claude --type
+#     `--ref` types `@<text> `, which is only meaningful for a file:line hint.
+#     A prose line has to be typed verbatim.
+#
+# Restoring is done from an EXIT trap: tmux-thumbs.sh blocks until the pick
+# resolves (`tmux wait-for` in `Swapper::wait_thumbs`), so the trap fires after
+# the user has chosen, not before. Known limit: the options are global, so two
+# panes in line mode at the same instant would clobber each other's restore.
+# Single-user interim tool — accepted. This whole script retires when `seek`
+# lands ([the seek spec](records/2026-08-09-1116-tmux-seek/tmux-seek.org)), whose
+# `l` / `L` copy-mode keys do line grain natively on `prefix Space`.
+#
+set -Eeu -o pipefail
+
+# First non-space through last non-space; the `|\S` arm keeps single-character
+# lines matchable (`\S.*\S` needs two). Rust's regex crate is leftmost-first,
+# so the greedy arm is tried before the fallback.
+readonly LINE_RE='\S.*\S|\S'
+readonly UPCASE_LINE='echo -n "{}" | wl-copy && tmux set-buffer -- "{}" && echo -n "{}" | '"$HOME"'/.tmux/tools/target/release/to-claude --type'
+
+# `tmux show -vg` exits 1 on an unset user option; capture "" for that case and
+# tell the restore to unset rather than write an empty value back.
+save() { tmux show -vg "$1" 2>/dev/null || true; }
+
+prev_regexp="$(save @thumbs-regexp-1)"
+prev_upcase="$(save @thumbs-upcase-command)"
+
+restore_one() {
+  local opt="$1" val="$2"
+  if [ -n "$val" ]; then
+    tmux set -g "$opt" "$val"
+  else
+    tmux set -gu "$opt"
+  fi
+}
+
+restore() {
+  restore_one @thumbs-regexp-1 "$prev_regexp"
+  restore_one @thumbs-upcase-command "$prev_upcase"
+}
+trap restore EXIT
+
+tmux set -g @thumbs-regexp-1 "$LINE_RE"
+tmux set -g @thumbs-upcase-command "$UPCASE_LINE"
+
+"$HOME/.tmux/plugins/tmux-thumbs/tmux-thumbs.sh"

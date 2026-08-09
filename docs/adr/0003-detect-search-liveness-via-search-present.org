@@ -94,3 +94,26 @@ nothing to clear and no ordering to get wrong.
 - Related to: [[file:0002-deliver-the-clipboard-half-through-wl-copy.org][ADR-0002]] — unaffected: seek still computes the text itself for the grain rule
 - Influenced by: [[file:../../records/2026-08-09-1116-tmux-seek/assets/destination-review-2026-08-09.md][the destination review]], blocker 3 — the four stamp defects
 - Influenced by: [[file:../../records/2026-08-09-1116-tmux-seek/grill/2026-08-09-1443-origin-stamp-redesign.org][the redesign grill]], which carries the measurements
+
+* Amendments
+
+This ADR is accepted and its decision stands; the note below corrects a consequence that
+was stated wrongly, without reopening the decision.
+
+** [2026-08-09] There is no trailing =cancel=
+
+The second Consequences bullet reads "seek issues no =send-keys= into the pane during
+operation (only a race-free trailing =cancel= on success)". The parenthetical is void:
+**seek never cancels copy-mode.**
+
+The delta review found that the two halves of the same decision contradicted each other —
+the keys are claimed to be repeatable across one search, yet a delivery that cancelled
+copy-mode would end the search, and =search_present= was measured to reset to 0 on
+re-entry (redesign grill, line 9). Repeatability was kept and the cancel was dropped:
+delivery leaves the pane in copy-mode, and the user exits with =q= or Escape. A second
+consequence of that choice is that seek issues *no* =send-keys= at all, so the
+=run-shell= timing risk this bullet describes as merely dissolved is now structurally
+absent.
+
+Current text: [[file:../../records/2026-08-09-1116-tmux-seek/tmux-seek.org][the tmux-seek map]], section Current contract →
+Delivery and copy-mode.

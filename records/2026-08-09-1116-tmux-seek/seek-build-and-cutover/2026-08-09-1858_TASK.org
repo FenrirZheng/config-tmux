@@ -1,0 +1,380 @@
+#+TITLE: TASK — seek: build the crate and cut over from tmux-thumbs
+#+TODO: TODO IN-PROGRESS(i) | DONE CANCELLED
+#+STATUS: 19 done · 0 in-progress · 1 todo
+#+UPDATED: [2026-08-09 Sun 20:27] (UTC+8)
+
+Durable checklist. Live progress notes in [[file:2026-08-09-1858_TODO.org][TODO log]].
+Execution: run under /goal (or just start working) — the executing
+session builds its own harness task list; the T-ids, verify: and
+review: lines here are the flow it must honor. review(agent) lines
+name their mechanism — /code-review (a diff) or /review-plan (a
+document on disk) — and are discharged by running that mechanism,
+which spawns reviewer agents; reviewing your own work by hand does
+not count. Never run /code-review ultra unprompted (billed, user's
+call). review(human) lines only by the user. Status flips and new
+items go through `ct` (see the capture-tasks skill), never hand edits.
+
+The specification is [[file:../tmux-seek.org][the tmux-seek map]] — specifically its
+=* Current contract= section, which supersedes every ticket it contradicts. Read that
+section before starting any item; the tickets below it are the rationale trail, not
+instructions. Working tree: =/home/fenrir/.tmux= on branch =main= (a submodule of the
+=$HOME= repo — inner commit first, then bless the gitlink in =$HOME=).
+
+* Specification [2/2]
+
+** DONE T1 Run the delta plan review on the tmux-seek map
+:PROPERTIES:
+:CUSTOM_ID: T1
+:END:
+Re-review the map against the 20260809-1338 baseline after tickets t5-t11 were added.
+- verify(output): six reviewer reports consolidated with a coverage line and a snapshot
+  written — [[file:../.review-plan/tmux-seek.org/20260809-1623/findings.md][delta review findings]] exists and names 9 blockers. Passed
+  [2026-08-09 Sun].
+
+** DONE T2 Close the nine blockers in the map
+:PROPERTIES:
+:CUSTOM_ID: T2
+:END:
+Add a =* Current contract= section, mark superseded ticket passages in place, and record
+the three decisions the user made (stay in copy-mode; capture-pane -J + width-aware
+column mapping; report wl-copy failure after to-claude).
+- verify(output): =rg -c 'Current contract' ../tmux-seek.org= ≥ 1, =* Not yet specified=
+  lists 4 items, and the file passes a structural read with 11 tickets / 11 Questions /
+  11 Resolutions intact. Passed [2026-08-09 Sun].
+
+* Close the open values [3/3]
+
+Three of the four =* Not yet specified= items. All block the cutover commit; none blocks
+writing the crate. Item 4 (minimum tmux version) is folded into [[#T9][T9]], the runbook.
+
+** DONE T3 Confirm the prefix Space binding's quoting at a real keyboard
+:PROPERTIES:
+:CUSTOM_ID: T3
+:END:
+*Narrowed 2026-08-09.* The shape is decided: the two-branch =if-shell -F '#{alternate_on}'=
+form is now the **primary** in Current contract, not the fallback. The man page settles it
+— =-p= takes a *comma-separated list of prompts*, and the conditional label
+=#{?alternate_on,(seek ⚠ visible screen only),(seek)}= contains two commas, so tmux reads
+it as three prompts whatever it does about format expansion. [[file:../tmux-seek.org::#t8][t8]] chose that
+form as primary and never checked what =-p='s argument *is*. (Separately: the man page
+documents format expansion for *template* under =-F=, never for =-p=.)
+
+What is left is one live confirmation of the three-level quoting.
+- verify(manual): at a real keyboard, ~prefix Space~ in a normal pane and in an alt-screen
+  pane — exactly *one* prompt appears, labelled =(seek)= / =(seek ⚠ visible screen only)=,
+  and a query containing a space and a double quote reaches
+  =search-backward-incremental= intact. Not scriptable: three rigs have now failed
+  identically — =command-prompt= does not open when driven from outside the client
+  (retried 2026-08-09 with a =script(1)= pty client; the prompt never rendered), and
+  =#{client_prompt}= does not exist as a format, so the client's own screen is the only
+  observable.
+
+  *Closed [2026-08-09 Sun]* — the wall turned out to be the wrong technique, not an
+  impossibility. **tmux-in-tmux**: run the inner server's client inside a pane of an outer
+  server, and =send-keys= on the outer feeds real keystrokes to the inner client.
+  [[file:../assets/scripts/verify-seek-live.sh][verify-seek-live.sh]] then verified both branches — =(seek)= in a
+  normal pane, =(seek ⚠ visible screen only)= in an alt-screen pane, no literal format
+  leaked — plus a query containing a space and a double quote reaching
+  =search-backward-incremental= intact. 14/14.
+- dep: T2 — the binding text it checks lives in Current contract.
+
+** DONE T4 Decide line-grain trimming
+:PROPERTIES:
+:CUSTOM_ID: T4
+:END:
+Whether =l= / =L= trim the captured line's leading and trailing whitespace. Recorded as
+"an assumption rather than decided" in the 1545 grill snapshot.
+- verify(output): =rg -c 'Line-grain trimming' ../tmux-seek.org= returns 0, and the
+  =** Grain rule= section states the =l= / =L= trim behaviour explicitly.
+- dep: T2 — the item lives in the section T2 created.
+
+** DONE T5 Decide the multi-token grab after a cursor move
+:PROPERTIES:
+:CUSTOM_ID: T5
+:END:
+After a successful multi-token search the user moves the cursor with =C-n= / =C-p=, then
+presses =w=: =search_present= is still 1 and the query still has whitespace, so grain
+rule 2 delivers the query — text no longer under the cursor. Accept, or gate rule 2 on
+the cursor still sitting inside the match.
+- verify(output): =rg -c 'Multi-token grab after a cursor move' ../tmux-seek.org= returns
+  0, and =** Grain rule= states the chosen behaviour.
+- dep: T2 — same section.
+
+* Build the crate [3/3]
+
+** DONE T6 Scaffold the seek crate and register it in the workspace
+:PROPERTIES:
+:CUSTOM_ID: T6
+:END:
+New =tools/seek/= crate with the four subcommands (=word=, =line=, each with
+=--claude=), added to =tools/Cargo.toml='s workspace members. Read
+[[file:../../../tools/ARCHITECTURE.md][the toolset architecture doc]] first — house conventions are binding.
+- verify(cmd): =cd ~/.tmux/tools && cargo build --release && test -x target/release/seek=
+
+** DONE T7 Implement the three pure functions with table-driven tests
+:PROPERTIES:
+:CUSTOM_ID: T7
+:END:
+The grain splitter, the token extractor (whitespace-delimited run + punctuation trim) and
+the path classifier. The map's worked-edge table under =** Path rule= is the test fixture.
+- verify(output): =cd ~/.tmux/tools && cargo test -p seek 2>&1 | rg 'test result: ok\. [1-9][0-9]* passed'=
+  AND =rg -q 'v0\.15\.1' tools/seek/= — the second clause is a deliberate Goodhart
+  strengthening: the count check alone passes on one =assert!(true)=, so the fixture's own
+  edge values must appear in the source.
+- review(agent): /code-review — the =tools/seek/= diff, focused on the three pure
+  functions and their tests. Check that the path classifier matches the map's worked-edge
+  table row for row (=main.rs=, =.bashrc=, =foo.tar.gz=, =main.rs:42=, =https://x.io/a= →
+  =--ref=; =v0.15.1=, =1.5=, =Makefile=, =..= → =--paste=), and that no test asserts a
+  tautology.
+- dep: T6 — needs the crate to exist.
+
+** DONE T8 Implement the tmux I/O, delivery sinks and message set
+:PROPERTIES:
+:CUSTOM_ID: T8
+:END:
+=capture-pane -J= for the logical line, =copy_cursor_x= as a display column converted
+through display width, saturating char-boundary indexing, =wl-copy= then
+=tmux set-buffer -- <text>=, to-claude on stdin, and every =display-message= carrying
+=-l=. All specified in Current contract.
+- verify(manual): exercised end to end by [[#T14][T14]]'s Verify matrix. Cannot be scripted
+  here: the copy path was measured to reach the Wayland clipboard only when the pane is
+  visible in the client's current window, so a headless rig cannot observe the real effect.
+- review(agent): /code-review — the =tools/seek/= diff for the tmux I/O half. Check
+  three things the spec calls out and a reviewer would otherwise miss: that
+  =tmuxlib::message()= is NOT used (it omits =-l=, tools/tmuxlib/src/lib.rs:356, and
+  reusing it re-opens the format-injection hole), that =set-buffer= carries =--=, and
+  that the column→char mapping is width-aware rather than byte- or char-indexed.
+- dep: T6 — needs the crate to exist.
+- dep: T7 — the I/O half calls the pure functions.
+
+* Documentation [5/5]
+
+** DONE T9 Write runbooks/seek.md
+:PROPERTIES:
+:CUSTOM_ID: T9
+:END:
+Install / Verify / Troubleshoot, in [[file:../../../runbooks/to-emacs.md][to-emacs.md]]'s shape. Carries the
+Verify matrix, the rollback recipe from the map's t10 (including the four =unbind= lines),
+a message→cause→fix table for every string in the map's Message set, the minimum tmux
+version for =display-message -l= (=* Not yet specified= item 4), and a design-rationale
+link back to the map.
+- verify(output): =test -f runbooks/seek.md= and each of =→ CLIP=, =wl-copy failed=,
+  =nothing under the cursor=, =not built=, =unbind -T copy-mode= appears in it.
+- review(agent): /review-plan — =runbooks/seek.md=, focus: every failure message the map's
+  =** Message set= defines has a Troubleshooting row naming its cause and fix, and the
+  rollback recipe is executable under stress by someone who did not write it. Failing
+  looks like a message with no row, or a recipe step whose command is described rather
+  than written.
+- dep: T2 — the Message set and rollback recipe it copies from.
+
+** DONE T10 Add the README runbook index line
+:PROPERTIES:
+:CUSTOM_ID: T10
+:END:
+README.md indexes runbooks and currently lists only to-emacs.
+- verify(cmd): =rg -q 'runbooks/seek\.md' README.md=
+- dep: T9 — do not index a runbook that does not exist.
+
+** DONE T11 Add the ARCHITECTURE.md Crates row
+:PROPERTIES:
+:CUSTOM_ID: T11
+:END:
+One row for =seek=, whose =plan= cell reads =records/2026-08-09-1116-tmux-seek= — the
+records directory, not a =plans/*.md= file (the map's t11 decided the records are the
+specification).
+- verify(cmd): =rg -q 'records/2026-08-09-1116-tmux-seek' tools/ARCHITECTURE.md=
+- dep: T6 — the crate the row describes.
+
+** DONE T12 Rewrite both cheat.txt prefix Space entries
+:PROPERTIES:
+:CUSTOM_ID: T12
+:END:
+cheat.txt names ~prefix Space~ twice — under =COPY & GRAB= as the thumbs hint mode and
+under =→ CLAUDE= as the uppercase-hint send path. Four lines become seven, one per key.
+Line 33's "all three land in wl-copy too" invariant must still be true afterwards.
+- verify(output): =rg -c 'thumbs' cheat.txt= returns 0 AND =rg -c 'prefix Space' cheat.txt=
+  ≥ 1. **Absence-assertion warning**: the =thumbs= clause trips from inside if the rewrite
+  leaves an explanatory comment containing the literal word. The correct fix is to change
+  cheat.txt (reference the removal by pointing at the runbook), never to weaken the check.
+- dep: T2 — the per-key contract the entries describe.
+
+** DONE T13 Add the ARCHITECTURE.md Key bindings row
+:PROPERTIES:
+:CUSTOM_ID: T13
+:END:
+One row covering ~prefix Space~ plus the four copy-mode keys, written the way
+=copy-mode Y= already is. Ships inside the cutover commit, not with T11.
+- verify(cmd): =rg -q 'prefix Space' tools/ARCHITECTURE.md=
+- dep: T6 — the crate the binding invokes.
+
+* Cutover [2/3]
+
+** DONE T14 Run the runbook Verify matrix
+:PROPERTIES:
+:CUSTOM_ID: T14
+:END:
+All nine assertions in the map's =** Runbook Verify — the cutover gate= section, with a
+real client attached and a live Wayland session. This is the gate: the cutover is only
+safe after it passes.
+- verify(manual): each of the nine assertions observed and recorded, one dated line per
+  assertion, in [[file:2026-08-09-1858_TODO.org][the TODO log]]'s Decisions / notes.
+  *PASSED [2026-08-09 Sun] — 28 of 29 assertions automated.*
+  [[file:../assets/scripts/verify-seek-headless.sh][verify-seek-headless.sh]] 11/11 (grabber mode) and
+  [[file:../assets/scripts/verify-seek-live.sh][verify-seek-live.sh]] 17/17 (live search, via tmux-in-tmux),
+  on top of 17/17 unit tests. The live suite closed every row previously thought
+  keyboard-only, including row 1 (the =scroll_position= regression test), row 7 (the
+  wl-copy degrade path, via a PATH stub — no sudo), row 8 (both if-shell branches) and
+  row 9 (repeat grabs after a live search — the design's last unverified inference).
+  The single remaining assertion is =wl-paste= returning the grabbed text, manual only
+  because a test would overwrite the real clipboard. Cannot be
+  scripted: assertions 1, 3, 5 and 6 need a visible pane in an attached client, which is
+  precisely the condition the clipboard path was measured to require.
+- dep: T8 — the behaviour under test.
+- dep: T9 — the matrix lives in the runbook.
+- dep: T3 — the prompt label must be settled before it can be asserted.
+- dep: T4 — assertion 1's expected line-grain output is undefined until trimming is decided.
+- dep: T5 — assertion 8's expected repeat-grab result depends on the cursor-move rule.
+
+** TODO T15 Make the atomic cutover commit
+:PROPERTIES:
+:CUSTOM_ID: T15
+:END:
+One commit: thumbs config out (tmux.conf lines 38, 57, 60-68, 74), seek bindings into
+claude.conf, both =mode-keys= / =status-keys= pins into tmux.conf's options area,
+cheat.txt (T12), the ARCHITECTURE Key bindings row (T13), and =rm -rf
+plugins/tmux-thumbs/=. One commit so rollback is exactly one revert.
+- verify(output): =git -C ~/.tmux show --stat HEAD= lists tmux.conf, claude.conf,
+  cheat.txt and tools/ARCHITECTURE.md in the SAME commit; =rg -c 'thumbs' tmux.conf=
+  returns 0; =test ! -d plugins/tmux-thumbs=.
+- review(human): sign-off before the irreversible deletion. =plugins/tmux-thumbs/= is
+  gitignored, so it is not recoverable from this repo's history, and the restore path
+  needs network twice (TPM re-clone, then an interactive build).
+- dep(irreversible): T14 → T15 — the cutover deletes a gitignored directory that cannot be
+  restored from history. Cutting over before Verify passes means discovering seek is
+  broken with thumbs already gone and only a network-dependent, interactive rollback left.
+- dep: T12 — cheat.txt ships inside this commit.
+- dep: T13 — the ARCHITECTURE row ships inside this commit.
+
+** DONE T20 Decide the fate of prefix C-Space (thumbs line-grain)
+:PROPERTIES:
+:CUSTOM_ID: T20
+:END:
+Discovered 2026-08-09 while writing the crate: the cutover scope in [[#T15][T15]] is
+incomplete and t10's line numbers are stale.
+
+=tmux.conf= carries thumbs config at lines 38, 63, 66, 73, *80*, *93*, 96 — not
+"38, 57, 60-68, 74". Two entries this map has never mentioned:
+
+- =@thumbs-multi-command= (line 80) — multi-pick, advertised at cheat.txt line 17.
+- =bind C-Space run-shell ~/.tmux/thumbs-line.sh= (line 93) — a line-grain picker that
+  labels *every visible line*, for prose token hints cannot see. Advertised at cheat.txt
+  lines 15-17 and 34-35. Its wrapper is **untracked**, so a revert would not restore it.
+
+seek's =l= / =L= are not a replacement: they need a search first. Deleting
+=plugins/tmux-thumbs/= removes all three capabilities.
+
+Decide: (a) accept the loss and record it in Out of scope; (b) keep thumbs installed for
+=C-Space= alone and give seek only ~prefix Space~; (c) build a seek equivalent — a new
+effort, outside this map.
+- verify(output): the map's Out of scope or Current contract states the decision for
+  =C-Space= and for multi-pick, and t10's cutover line list matches the current tmux.conf.
+- review(human): a feature-loss decision about the user's own daily tooling.
+- dep: T20 → T12 — the cheat.txt rewrite cannot be written until this is settled.
+- dep(irreversible): T20 → T15 — the cutover deletes the plugin tree; deciding afterwards
+  means deciding with the feature already gone and a network-dependent restore.
+
+* Riders [4/4]
+
+Independent of the cutover ordering. T16 and T17 are required before the cutover is called
+done; T18 never blocks it.
+
+** DONE T16 Amend ADR-0003's trailing cancel
+:PROPERTIES:
+:CUSTOM_ID: T16
+:END:
+[[file:../../../docs/adr/0003-detect-search-liveness-via-search-present.org][ADR-0003]] line 51 specifies a "race-free trailing =cancel= on
+success". There is no trailing cancel — delivery stays in copy-mode, which is what makes
+the keys repeatable. The ADR and the map currently contradict each other.
+- verify(output): =rg -c 'trailing =cancel=' docs/adr/0003-*.org= returns 0, or the line
+  carries an explicit superseded marker naming the map's =** Delivery and copy-mode=.
+- dep: T2 — the decision that created the contradiction.
+
+** DONE T17 Amend ADR-0004's copy_cursor_line reference
+:PROPERTIES:
+:CUSTOM_ID: T17
+:END:
+[[file:../../../docs/adr/0004-extract-the-word-token-in-seek-not-copy-cursor-word.org][ADR-0004]] specifies extraction from =copy_cursor_line=. The line
+now comes from =capture-pane -J=, because =copy_cursor_line= is a screen line and cannot
+reach a wrapped token.
+- verify(output): ADR-0004 names =capture-pane -J= as the line source, or marks the
+  =copy_cursor_line= sentence superseded with a pointer to the map's
+  =** Token extraction=.
+- dep: T2 — same.
+
+** DONE T18 Add the tools/ build step to ~/CLAUDE.md's fresh-clone bootstrap
+:PROPERTIES:
+:CUSTOM_ID: T18
+:END:
+The =$HOME= rider. Its own commit in the =$HOME= repo, never blocking the cutover. It also
+makes =runbooks/to-emacs.md='s claim that "Steps 1-2 are part of the home repo's normal
+bootstrap" true.
+
+Already satisfied: =~/CLAUDE.md= was restructured before this capture and its numbered
+Fresh-clone bootstrap now carries the step as item 5. The map's [[file:../tmux-seek.org::#t4][t4]] and
+[[file:../tmux-seek.org::#t11][t11]] both rest on the premise that "the eight existing steps never mention
+=~/.tmux/tools=" — that premise is now stale, and [[#T19][T19]] should record it.
+- verify(cmd): =rg -A 14 '^## Fresh-clone bootstrap' /home/fenrir/CLAUDE.md | rg -q 'cd ~/\.tmux/tools && cargo build --release'=
+  — anchored to the numbered bootstrap list. Passed [2026-08-09 Sun]. (Corrected from a
+  bare =rg -q 'cd ~/.tmux/tools' /home/fenrir/CLAUDE.md=, which was fail-open on location:
+  the =.tmux= section's own "Fresh parent clone" bullet matches it too, so the check could
+  pass with the bootstrap list untouched.)
+
+** DONE T19 Triage the delta review's remaining findings
+:PROPERTIES:
+:CUSTOM_ID: T19
+:END:
+21 should-fix items and 11 nits in [[file:../.review-plan/tmux-seek.org/20260809-1623/findings.md][the delta review findings]] were left
+untouched when the nine blockers were fixed. Each needs a disposition, not necessarily a fix.
+- verify(rubric): every should-fix and nit in that file has a recorded disposition —
+  folded into the map, deferred with a reason, or declined. Pass = zero items with no
+  decision. Fail = any item nobody has ruled on.
+- review(human): which findings are worth the edit is a judgment call about this tool's
+  value, not something a reviewer agent can settle.
+
+* Checkpoints — review & verification gates
+
+- [ ] After T5 — all three open values decided; the map's =* Not yet specified= holds only
+  item 4 (minimum tmux version, folded into T9).
+- [ ] After T8 — =review(agent): /code-review= over the whole =tools/seek/= diff,
+  discharged with a dated entry in the TODO log naming the verdict and the disposition of
+  every blocker finding.
+- [ ] After T9 — =review(agent): /review-plan= over =runbooks/seek.md=, same discharge rule.
+- [ ] After T14 — all nine Verify assertions pass, each with a dated line in the TODO log.
+  **This is the gate on the irreversible cutover; T15 must not start until it is green.**
+- [ ] After T15 — =review(human)=: user sign-off recorded before the thumbs tree is deleted.
+
+* Out of scope / 刻意排除
+
+- Reinstating a zero-input mode that labels every path on screen (tmux-thumbs' hint
+  behaviour) — accepted as lost during the design interview; revisiting it is a new
+  effort. Approval to reopen: the user.
+- Writing =plans/seek.md= — the map's t11 decided the records are the specification and a
+  distilled copy would be the drift-prone summary the house discipline forbids.
+- Fixing the delta review's 21 should-fix items and 11 nits wholesale — [[#T19][T19]] triages
+  them; it does not commit to acting on all of them. Approval to promote any of them into
+  the map: the user.
+- Parallel-running thumbs on a second key during cutover — declined during the design
+  interview for feature-scope reasons, and re-declined in t10 in favour of a big-bang
+  cutover gated on [[#T14][T14]].
+
+* References / 參考文件
+
+| doc                                                                 | why                                              |
+|---------------------------------------------------------------------+--------------------------------------------------|
+| [[file:2026-08-09-1858_TODO.org][TODO log]]                          | live progress + append-only decision log         |
+| [[file:../tmux-seek.org][tmux-seek map]]                             | the specification — read =* Current contract=    |
+| [[file:../.review-plan/tmux-seek.org/20260809-1623/findings.md][delta review findings]] | the 9 blockers T2 closed, plus T19's backlog     |
+| [[file:../assets/destination-review-2026-08-09.md][destination review]] | the earlier gate that produced tickets t5-t11    |
+| [[file:../../../tools/ARCHITECTURE.md][toolset architecture]]        | binding house conventions for every new crate    |
+| [[file:../../../runbooks/to-emacs.md][to-emacs runbook]]             | the shape T9's runbook copies                    |
+| [[file:../index.org][index]]                                         | task index for this output dir                   |

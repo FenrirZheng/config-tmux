@@ -1,0 +1,34 @@
+VARIANT B — seek takes prefix Space; thumbs stays installed for prefix C-Space.
+Replaces cheat.txt lines 12-19 (COPY & GRAB) and 30-39 (→ CLAUDE).
+Does NOT satisfy T12's `rg -c 'thumbs' cheat.txt` == 0 — that check must be
+rewritten, because thumbs deliberately survives.
+
+  COPY & GRAB  prefix C-t      copy mode (also prefix [ ; leave with q)
+               prefix Space    seek: type any text, Enter jumps to the match
+               then w / W      grab the WORD under the cursor / and send it
+               then l / L      grab the whole LINE / and send it
+                               stays in copy-mode — grab again, q to leave
+               prefix C-Space  thumbs LINE picker: one hint per visible line,
+                               press its letter — for prose seek would need you
+                               to type out. Space = multi-pick, Space again done
+               prefix ]        paste tmux buffer
+               prefix E        open this pane's FULL scrollback in Emacs
+
+  → CLAUDE     prefix m        mark a Claude pane as inbox (border ▶ CLAUDE)
+               send it stuff   prefix M clears the mark
+               prefix Space    seek, then UPPERCASE W / L = grab AND send
+                               a path goes as @file:line, anything else as text
+               prefix C-Space  UPPERCASE line hint: copy AND type it verbatim
+                               (a prose line is text, not an @-ref)
+               copy-mode Y     copy AND send the selection as one paste
+               prefix e        copy this pane's output AND send it as an @-file
+               all of these land in wl-copy too — Ctrl+Shift+V still works
+               nothing here ever presses Enter — you type the question
+
+WHAT THIS COSTS:
+  - the thumbs plugin tree stays, so the cutover is no longer "delete thumbs";
+    t10's atomic-commit rationale shrinks to "swap prefix Space only"
+  - the rollback recipe gets simpler (nothing to re-clone)
+  - ~/.tmux/thumbs-line.sh is currently UNTRACKED — if C-Space is keeping its
+    job, that wrapper should be committed, or the next fresh clone loses it
+  - two pickers with different mental models share the sheet

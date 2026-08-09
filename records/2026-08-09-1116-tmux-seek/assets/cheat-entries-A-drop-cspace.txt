@@ -1,0 +1,28 @@
+VARIANT A — full cutover: thumbs removed, prefix C-Space and multi-pick go with it.
+Replaces cheat.txt lines 12-19 (COPY & GRAB) and 30-39 (→ CLAUDE).
+Satisfies T12's check: `rg -c 'thumbs' cheat.txt` == 0.
+
+  COPY & GRAB  prefix C-t      copy mode (also prefix [ ; leave with q)
+               prefix Space    seek: type any text, Enter jumps to the match
+               then w / W      grab the WORD under the cursor / and send it
+               then l / L      grab the whole LINE / and send it
+                               stays in copy-mode — grab again, q to leave
+               prefix ]        paste tmux buffer
+               prefix E        open this pane's FULL scrollback in Emacs
+
+  → CLAUDE     prefix m        mark a Claude pane as inbox (border ▶ CLAUDE)
+               send it stuff   prefix M clears the mark
+               prefix Space    seek, then UPPERCASE W / L = grab AND send
+                               a path goes as @file:line, anything else as text
+               copy-mode Y     copy AND send the selection as one paste
+               prefix e        copy this pane's output AND send it as an @-file
+               all of these land in wl-copy too — Ctrl+Shift+V still works
+               nothing here ever presses Enter — you type the question
+
+WHAT YOU LOSE, stated plainly so the sheet is not the place you discover it:
+  - the zero-input picker that labelled every path/URL on screen (accepted at
+    design time; already in the map's Out of scope)
+  - prefix C-Space, which labelled every visible LINE for prose that token hints
+    could not see
+  - multi-pick (Space to select several, Space again to finish)
+seek needs you to type something first; it cannot label the screen.
