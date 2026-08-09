@@ -1,0 +1,58 @@
+#+TITLE: undefined-input-semantics
+
+Grilled within [[file:../tmux-seek.org::#t9][Undefined input semantics]].
+
+* Decisions
+
+- The =w= / =W= token is extracted by seek itself — the whitespace-delimited token
+  containing the cursor, computed from =copy_cursor_line= plus =copy_cursor_x= —
+  and =copy_cursor_word= exits the design. Recorded as [[file:../../../docs/adr/0004-extract-the-word-token-in-seek-not-copy-cursor-word.org][ADR-0004]]. Measured: tmux's
+  default =word-separators= is ="!\"#$%&'()*+,-./:;<=>?@[\\]^`{|}~"= — it contains
+  =. / : -= — so =copy_cursor_word= yields =home= on =/home/fenrir/.tmux/tools/seek.rs=,
+  =v0= on =v0.15.1=, and =rs= on =main.rs:42=. The earlier =bravo= measurement held
+  only because the test string had no separators; the type-few-chars-get-the-path
+  promise was broken for every real target. This supersedes the
+  "otherwise =copy_cursor_word=" wording in the origin-stamp redesign's grain rule.
+- The extracted token is trimmed of surrounding punctuation — leading and trailing
+  =()[]{}<>"'`,;= plus trailing lone =.= and =:= — so =see main.rs,= delivers
+  =main.rs= and =(foo.rs:12)= delivers =foo.rs:12=. Untrimmed tokens would miss the
+  path classifier and silently degrade to =--paste=.
+- The query is whitespace-trimmed *before* the grain decision, replacing the
+  deliver-verbatim default the origin-stamp redesign left: a trailing space is almost
+  always accidental, and the search already matched against the untrimmed string, so
+  trimming affects only the grain choice, never the landing. A whitespace-only query
+  trims to empty, falls through to ordinary token extraction, finds the cursor on
+  whitespace, and lands on =seek: nothing under the cursor= — no special case.
+- Path-shaped, in literal terms: a token is =--ref= material when it contains =/=, or
+  matches =name.ext:digits=, or is a bare filename whose final dot-segment (1-8 chars)
+  contains at least one ASCII letter; everything else routes =--paste=. Worked edge
+  table: =/home/f/x.rs=, =src/main.rs:42=, =main.rs:42=, =main.rs=, =.bashrc=,
+  =foo.tar.gz=, =https://x.io/a= → =--ref=; =v0.15.1= (final segment =1=), =1.5=,
+  =Makefile= (no dot), =..= (empty segments) → =--paste=. URLs ride the slash rule,
+  matching thumbs' historical uppercase-hint behaviour.
+
+* Rejected alternatives
+
+- Removing =. / : -= from the global =word-separators= — fixes =copy_cursor_word= for
+  paths but silently changes =DoubleClick1Pane=, =M-b= / =M-f= and every other word
+  consumer, and no single separator set serves both paths and prose.
+- Accepting fragment semantics — =home= / =v0= / =rs= are useless deliveries and
+  mis-route the =--ref= classifier on exactly the common shapes.
+- Delivering tokens unpunctuated-untrimmed — =main.rs,= misses the classifier.
+- Keeping the deliver-verbatim query default — a trailing space delivers a
+  trailing-space string and a whitespace-only query delivers spaces; defined but
+  almost never wanted.
+- A =scheme://= exception routing URLs to =--paste= — one more rule, and a departure
+  from thumbs' behaviour, for a case that is rare on this user's screens.
+- The original thumbs union without the bare-filename clause — =main.rs=, the most
+  common compiler-error shape, would route =--paste=.
+
+* Open items
+
+- The mapping from =copy_cursor_x= (a screen column) into =copy_cursor_line= (line
+  content) is unverified on *wrapped lines* and *wide (CJK) characters* — an index
+  mismatch grabs the wrong token. Implementation verifies both before the crate
+  ships; the extraction algorithm itself is unaffected.
+- Line grain (=l= / =L=) delivers =copy_cursor_line= as tmux reports it, with no
+  trimming — stated as an assumption rather than decided; revisit only if trailing
+  whitespace in line grabs proves annoying.

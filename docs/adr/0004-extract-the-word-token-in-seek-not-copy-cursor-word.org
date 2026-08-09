@@ -1,0 +1,84 @@
+#+TITLE: ADR-0004: Extract the word token in seek, not via copy_cursor_word
+#+STATUS: accepted
+#+DATE: 2026-08-09
+#+DECIDERS: @fenrir
+
+* Context and Problem Statement
+
+The =w= / =W= keys promise that typing a few characters of a path delivers the whole
+path, and every earlier record reads that word from tmux's =copy_cursor_word=. Measured
+on tmux 3.5a defaults, that variable fragments exactly the targets the keys exist for:
+=word-separators= defaults to a set containing =. / : -=, so the cursor on
+=/home/fenrir/.tmux/tools/seek.rs= yields =home=, on =v0.15.1= yields =v0=, and on
+=main.rs:42= yields =rs=.
+
+* Decision Drivers
+
+- The containing-word grain was chosen *because* "type =oxtro=, get =foxtrot="
+  generalises to "type three characters, get the full path" — a promise the measured
+  fragments break for every path-shaped target.
+- The path classifier (slash, =name.ext:digits=, letter-bearing extension) needs the
+  full token to classify; fragments like =rs= mis-route every =--ref= candidate.
+- =seek= already reads =copy_cursor_line= for the line grain, so the cursor's line is
+  in hand either way.
+
+* Considered Options
+
+- Option 1: Extract the whitespace-delimited token containing the cursor from
+  =copy_cursor_line= plus =copy_cursor_x=, inside seek
+- Option 2: Remove =. / : -= from the global =word-separators= option so
+  =copy_cursor_word= returns whole paths
+- Option 3: Keep =copy_cursor_word= and accept fragment semantics
+
+* Decision Outcome
+
+Chosen option: "*Option 1*", because it is the only route that restores the
+type-few-chars-get-the-path promise without touching global behaviour: changing
+=word-separators= would silently alter =DoubleClick1Pane= word selection and the
+=M-b= / =M-f= word motions everywhere in tmux, and fragment semantics kill the feature
+the grain exists for. The extraction is a pure function over =(line, x)=, which also
+makes it unit-testable alongside the path classifier.
+
+** Consequences
+
+- Good, because the delivered token is the same shape the path classifier and the
+  thumbs-inherited regexps expect — =main.rs:42= arrives whole, not as =rs=.
+- Good, because surrounding-punctuation trimming (=see main.rs,= → =main.rs=) has a
+  natural home inside the same pure function.
+- Good, because no global option changes hand; DoubleClick and word motions keep their
+  stock behaviour.
+- Bad, because seek re-implements word-splitting that tmux nominally provides, and the
+  two definitions of "word" now coexist — tmux's for motions, seek's for grabs.
+- Bad, because the mapping from =copy_cursor_x= (a screen column) into
+  =copy_cursor_line= (line content) is unverified on wrapped lines and wide (CJK)
+  characters — an index mismatch there grabs the wrong token. Implementation must
+  verify both cases before the crate ships.
+
+* Pros and Cons of the Options
+
+** Option 1: Extract in seek from line plus x
+
+- Good, because the promise the grain was chosen for actually holds.
+- Good, because pure-function extraction is unit-testable per the workspace's
+  =#[cfg(test)]= convention.
+- Bad, because of the wrapped-line / wide-char index mapping risk above.
+
+** Option 2: Change global word-separators
+
+- Good, because =copy_cursor_word= then returns whole paths with no seek code.
+- Bad, because every other consumer of word boundaries — =DoubleClick1Pane=
+  select-word, =M-b= / =M-f=, =next-word-end= — changes behaviour as a side effect of
+  a seek decision.
+- Bad, because the needed separator set is grain-specific: paths want =/.:= kept,
+  prose wants them split, and one global option cannot serve both.
+
+** Option 3: Accept fragment semantics
+
+- Good, because it is the least code and uses tmux's primitive as-is.
+- Bad, because =home=, =v0= and =rs= are useless deliveries for the three most common
+  target shapes, and the =--ref= router would misclassify every one of them.
+
+* Links
+
+- Related to: [[file:0003-detect-search-liveness-via-search-present.org][ADR-0003]] — the same pattern: a tmux primitive measured unfit and replaced
+- Influenced by: [[file:../../records/2026-08-09-1116-tmux-seek/grill/2026-08-09-1545-undefined-input-semantics.org][the input-semantics grill]], which carries the measurements
