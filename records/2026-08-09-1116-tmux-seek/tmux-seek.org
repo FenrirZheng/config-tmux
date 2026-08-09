@@ -493,3 +493,35 @@ big-bang cutover is a legitimate choice — it just has not been recorded as one
 parallel-run option (thumbs kept on a different key) was declined during the design
 interview for feature-scope reasons, not rollout-risk reasons, so the rollout question
 was never actually asked.
+
+** TODO The specification artifact and the scope boundary :grilling:
+:PROPERTIES:
+:CUSTOM_ID: t11
+:ASSIGNEE:
+:BLOCKED_BY:
+:END:
+
+*** Question
+
+The Destination promises "a written specification", and no artifact holds it. See
+[[file:assets/destination-review-2026-08-09.md][the destination review]], blockers 13 and 15.
+
+1. Every other tool in the workspace has a design doc in `plans/` — ten of them, e.g.
+   `to-claude-capture-rail.md`, `to-emacs-scrollback.md` — and tools/ARCHITECTURE.md's
+   Crates table carries a `plan` column keyed to those filenames. seek's decisions are
+   spread across this map, four grill snapshots and two ADRs, with no consolidated
+   document and nothing to put in that cell. `runbooks/to-emacs.md` also links back to
+   its `plans/` doc, so the runbook shape ticket t4 adopted assumes one exists. Decide
+   whether seek gets `plans/seek.md`, or whether the ADRs plus snapshots are declared to
+   be the design doc and the table cell says so.
+2. Ticket t4 reached into the `$HOME` repo by adding a step to `~/CLAUDE.md`'s
+   fresh-clone bootstrap. That is outside this map's Destination, which is scoped to
+   building the crate and rewiring tmux.conf. A related contradiction to resolve at the
+   same time: `runbooks/to-emacs.md`'s Install section already asserts "Steps 1-2 are
+   part of the home repo's normal bootstrap", step 2 being
+   `cd ~/.tmux/tools && cargo build --release` — but `~/CLAUDE.md`'s eight steps contain
+   no such step. One of those two documents is wrong today, independently of seek.
+
+Also in scope here: README.md indexes runbooks and would need a line for
+`runbooks/seek.md`, and cheat.txt line 33's "all three land in wl-copy too" invariant is
+load-bearing for a ticket t3 consequence while sitting outside t4's rewrite scope.
