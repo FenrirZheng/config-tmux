@@ -38,6 +38,7 @@ Vocabulary: [[file:../../CONTEXT.org][CONTEXT.org]].
 
 - Whether seek's pure functions (the hybrid grain splitter, the path classifier) get table-driven unit tests, given every sibling crate carries #[cfg(test)] while ticket t4 settled on manual verification only
 - The order and acceptance criteria for the eight artifacts the build touches across two repos — the key-table grill defers this to an execution checklist that does not exist yet
+- Why a working plugin is being removed at all: the only driver on record is that removing thumbs would break the to-claude --ref path, which is circular, so the ROI of a Rust crate plus runbook plus doc edits cannot be judged
 
 * Out of scope
 
