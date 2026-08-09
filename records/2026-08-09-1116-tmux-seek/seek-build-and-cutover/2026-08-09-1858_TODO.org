@@ -7,20 +7,16 @@ session, which has seen nothing of this one: traps beat activity logs.
 
 * Current focus
 
-The crate is written, builds clean and passes 14 unit tests; all documentation is in
-place. Everything now waits on **two decisions only a human can make**:
-[[file:2026-08-09-1858_TASK.org::#T20][T20]] (does =prefix C-Space= survive the cutover?)
-and the sign-off on [[file:2026-08-09-1858_TASK.org::#T15][T15]] itself. One live-keyboard
-check remains, [[file:2026-08-09-1858_TASK.org::#T3][T3]].
+**The effort is complete.** T1-T20 are all DONE. The cutover landed 2026-08-09 as four
+commits ending in the atomic =seek: cut over from tmux-thumbs on prefix Space=; the live
+server runs the new bindings; both verify suites pass post-cutover (11/11 headless,
+17/17 live) on top of 17/17 unit tests and the clipboard round trip.
 
 * Next steps
 
-1. Answer T20 — it blocks the cheat.txt rewrite and the cutover.
-2. Do T3 at a real keyboard: one ~prefix Space~ in a normal pane and one in an alt-screen
-   pane, checking that exactly one prompt appears.
-3. Run the T14 Verify matrix (nine rows, now written out in
-   [[file:../../../runbooks/seek.md][the runbook]]).
-4. Only then T15, and only with sign-off — it deletes a gitignored tree.
+None. A future session touching seek starts from the map's =* Current contract= and
+[[file:../../../runbooks/seek.md][the runbook]]; rollback, if ever needed, is the
+runbook's six-command recipe.
 
 * Decisions / notes
 
@@ -270,11 +266,7 @@ check remains, [[file:2026-08-09-1858_TASK.org::#T3][T3]].
 
 * Blockers
 
-- **T20 — does =prefix C-Space= survive?** A user decision about losing a working feature.
-  Blocks the cheat.txt rewrite (T12) and the cutover (T15). Nothing else is waiting on it.
-- ~~T3~~ *closed 2026-08-09* — both if-shell branches verified via tmux-in-tmux.
-- ~~T14's automation~~ *closed 2026-08-09* — 28 of 29 assertions automated and passing. The
-  one left is =wl-paste= returning the text, manual only to avoid overwriting the real
-  clipboard.
-- **T15 — sign-off.** Deliberately not done: it deletes a gitignored tree whose restore
-  path needs network twice.
+None. Every former blocker closed 2026-08-09: T3 via tmux-in-tmux, T14's last assertion
+via the clipboard save/restore rig, T20 by user ruling (accept the loss), and T15 executed
+after recorded sign-off — cutover commit =seek: cut over from tmux-thumbs on prefix Space=,
+live server reloaded and verified, both suites green afterwards.

@@ -2,4 +2,4 @@
 
 | task                                                                                                          | TODO                                                          | status                           | updated          |
 |---------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------+----------------------------------+------------------|
-| [[file:seek-build-and-cutover/2026-08-09-1858_TASK.org][seek: build the crate and cut over from tmux-thumbs]] | [[file:seek-build-and-cutover/2026-08-09-1858_TODO.org][log]] | 19 done · 0 in-progress · 1 todo | 2026-08-09 20:27 |
+| [[file:seek-build-and-cutover/2026-08-09-1858_TASK.org][seek: build the crate and cut over from tmux-thumbs]] | [[file:seek-build-and-cutover/2026-08-09-1858_TODO.org][log]] | 20 done · 0 in-progress · 0 todo | 2026-08-09 20:37 |

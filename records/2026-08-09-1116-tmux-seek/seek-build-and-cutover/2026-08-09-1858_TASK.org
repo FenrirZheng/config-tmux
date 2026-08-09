@@ -1,7 +1,7 @@
 #+TITLE: TASK — seek: build the crate and cut over from tmux-thumbs
 #+TODO: TODO IN-PROGRESS(i) | DONE CANCELLED
-#+STATUS: 19 done · 0 in-progress · 1 todo
-#+UPDATED: [2026-08-09 Sun 20:27] (UTC+8)
+#+STATUS: 20 done · 0 in-progress · 0 todo
+#+UPDATED: [2026-08-09 Sun 20:37] (UTC+8)
 
 Durable checklist. Live progress notes in [[file:2026-08-09-1858_TODO.org][TODO log]].
 Execution: run under /goal (or just start working) — the executing
@@ -207,7 +207,7 @@ One row covering ~prefix Space~ plus the four copy-mode keys, written the way
 - verify(cmd): =rg -q 'prefix Space' tools/ARCHITECTURE.md=
 - dep: T6 — the crate the binding invokes.
 
-* Cutover [2/3]
+* Cutover [3/3]
 
 ** DONE T14 Run the runbook Verify matrix
 :PROPERTIES:
@@ -235,7 +235,7 @@ safe after it passes.
 - dep: T4 — assertion 1's expected line-grain output is undefined until trimming is decided.
 - dep: T5 — assertion 8's expected repeat-grab result depends on the cursor-move rule.
 
-** TODO T15 Make the atomic cutover commit
+** DONE T15 Make the atomic cutover commit
 :PROPERTIES:
 :CUSTOM_ID: T15
 :END:
