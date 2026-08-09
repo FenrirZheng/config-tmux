@@ -42,6 +42,7 @@ t1-t4 Resolutions as superseded wherever it contradicts them.
 - [[#t5][Origin stamp contract redesign]] — stamp deleted: search_present is the liveness signal, backward search already lands on the match start, v is removed, and delivery exits copy-mode
 - [[#t6][Clipboard delivery ownership across the output keys]] — all four keys write wl-copy plus set-buffer, seek owns both sinks uniformly, wl-copy failure degrades with a changed message, and to-claude's exit code is swallowed
 - [[#t7][Status-line message safety and shape]] — all seek messages use display-message -l (injection structurally impossible), text truncates at 48 via tmuxlib, and the alt-screen suffix rides only on live-search deliveries
+- [[#t8][Binding placement and load ordering]] — seek block lives in claude.conf (loads last), the two pins go in tmux.conf's options area, sensible turns out to re-pin status-keys to the same value, and the prompt label is one conditional binding with a specified two-branch fallback
 
 * Not yet specified
 
@@ -523,7 +524,7 @@ The message table: =→ CLIP <text≤48>=; =→ BUFFER <text≤48> (wl-copy fail
 to-claude speaks; and the guard stub says =seek: not built — cd ~/.tmux/tools && cargo
 build --release=, fixing the string the CLI-surface grill left unnamed.
 
-** TODO Binding placement and load ordering :grilling:
+** DONE Binding placement and load ordering :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t8
 :ASSIGNEE: claude-grill-session
@@ -554,6 +555,38 @@ See [[file:assets/destination-review-2026-08-09.md][the destination review]], bl
 
 Also settle how the alt-screen and normal branches of the `prefix Space` binding stay in
 sync, which three grills deferred.
+
+*** Resolution
+
+Settled in [[file:grill/2026-08-09-1521-binding-placement-and-load-ordering.org][the 2026-08-09-1521 grill snapshot]] — five decisions, four rejected
+alternatives. No ADR: placement choices, all one-line reversible.
+
+The three live items this ticket carried, answered:
+
+1. Placement: ~prefix Space~, the four output keys and the load-time guard live in
+   claude.conf — the capture rail's home, sourced last via the queued run-shell at
+   tmux.conf line 128, so the guard's existence check runs after every plugin. The
+   =mode-keys emacs= and =status-keys emacs= pins go in tmux.conf's options area per
+   the house options-before-run-shells comment.
+
+2. The status-keys overwrite, severity corrected: sensible.tmux line 117 resets it
+   unconditionally *to the same value* — =emacs=, no guard, unlike its display-time
+   handling. sensible is an ally: it re-pins status-keys on every load regardless of
+   EDITOR, and the tmux.conf pin only covers the pre-TPM window and machines without
+   sensible. =mode-keys= it never touches. The destination review's "silently
+   overwritten" was true in mechanics but wrong in consequence.
+
+3. Branch sync: the prompt label is a single binding with
+   =#{?alternate_on,(seek ⚠ visible screen only),(seek)}= as primary, an =if-shell -F=
+   double branch as the fully specified fallback. =-p= format expansion is [未驗證] —
+   two probe rigs failed, and =tmux command-prompt= hangs when invoked from outside a
+   client — but the stock =C-r= binding embeds a format in =-I=, so expansion is
+   likely. Implementation verifies once with a real client and picks; both shapes are
+   one line, so no design decision remains open either way.
+
+Also recorded for later sessions: the full load-order map — tmux.conf parses, then
+queued run-shells in file order: TPM (47), thumbs (74, to be removed), ace-window
+(89), claude.conf (128, last, independent of TPM).
 
 ** TODO Undefined input semantics :grilling:
 :PROPERTIES:
