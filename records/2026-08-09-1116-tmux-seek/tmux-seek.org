@@ -591,7 +591,7 @@ queued run-shells in file order: TPM (47), thumbs (74, to be removed), ace-windo
 ** TODO Undefined input semantics :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t9
-:ASSIGNEE:
+:ASSIGNEE: claude-grill-session
 :BLOCKED_BY:
 :END:
 
