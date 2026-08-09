@@ -1,0 +1,58 @@
+#+TITLE: specification-artifact-and-scope
+
+Grilled within [[file:../tmux-seek.org::#t11][The specification artifact and the scope boundary]]. This session also
+resolved all five remaining fog lines, so it is the map's closing grill.
+
+* Decisions
+
+- The records *are* the specification: this map, ADR-0001 through ADR-0004, and the
+  grill snapshots. No =plans/seek.md= is written. ARCHITECTURE.md's Crates-table
+  =plan= cell for seek reads =records/2026-08-09-1116-tmux-seek= — the divergence from
+  the ten short-name cells documents itself — and =runbooks/seek.md='s
+  design-rationale link points at the map, replacing the =../plans/*.md= shape
+  to-emacs.md uses. Grounds: ARCHITECTURE.md's own intro calls the =plans/= docs
+  "written independently and collide", while the map passed measurement and a review
+  gate; a distilled third copy is exactly the drift-prone summary the user's
+  CLAUDE.md maintenance discipline forbids.
+- The =~/CLAUDE.md= fresh-clone bootstrap step covering the whole =tools/= workspace
+  stays a deliverable — an *independent rider*: its own commit in the =$HOME= repo,
+  listed in the execution checklist, never blocking the seek cutover. Adding it also
+  turns runbooks/to-emacs.md's existing "Steps 1-2 are part of the home repo's normal
+  bootstrap" claim from false to true, resolving that contradiction as a side effect.
+- The recorded driver for removing thumbs, replacing the circular one: *jump to
+  arbitrary text*. thumbs can only label targets its regexps match — paths, URLs,
+  hashes — so any other text on screen is unreachable; the original request was
+  literally "type any text". The incremental type-to-filter interaction is the
+  secondary driver. Together with the Out-of-scope note on the accepted zero-input
+  loss, the cost/benefit is now stated end to end.
+- seek's three pure functions — the grain splitter, the token extractor, the path
+  classifier — get table-driven =#[cfg(test)]= unit tests, with the worked edge table
+  (=v0.15.1=, =1.5=, =Makefile=, =..=, =.bashrc=, =foo.tar.gz=, =main.rs:42=) as the
+  regression fixture. This narrows the key-table grill's "verification is manual"
+  decision to the tmux-interaction half; all nine sibling crates already carry tests.
+- Fog, resolved as defaults confirmed with the user: the execution checklist is the
+  capture-tasks handoff artifact — the map records only the ordering constraints
+  already decided (crate commits, then runbook Verify passes, then the atomic
+  cutover commit; the =$HOME= rider independent). The guard's one-directionality is
+  accepted, with both stale directions documented in runbook Troubleshooting
+  (unbuilt → stubs until reload; =cargo clean= → live keys pointing at a vanished
+  binary until rebuild). The runbook Install section pins the reload command exactly
+  as to-emacs.md step 3 does. README gains a seek runbook index line, and cheat.txt's
+  "all three land in wl-copy too" wording updates inside the cutover commit's already
+  decided cheat.txt rewrite.
+
+* Rejected alternatives
+
+- Writing =plans/seek.md= — a second source of truth for decisions that live in the
+  map, in a repo whose owner's standing rule is "index entry or full text, never a
+  paragraph restating a file".
+- Spinning the =$HOME= bootstrap line into its own effort — a whole planning cycle for
+  one line, and the to-emacs.md contradiction would need a separate fix meanwhile.
+- Editing to-emacs.md to disclaim the bootstrap instead — resolves the contradiction
+  by keeping the hole that leaves ten binaries dead on a fresh clone.
+- Keeping verification purely manual — the classifier's edge table would have no
+  regression protection, and the pure functions are the cheapest possible tests.
+
+* Open items
+
+- None. This closes the map's last ticket and its last fog line.
