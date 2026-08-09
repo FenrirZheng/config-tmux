@@ -68,3 +68,32 @@ This decides whether seek's clipboard path is one tmux call or a shell-out, so i
 blocks the CLI surface. Answer with a measurement, not a reading of the docs:
 set a buffer from a detached command, then read the actual Wayland selection back
 with `wl-paste`, with a real client attached and again with none.
+
+** TODO Search-prompt edge-case semantics :grilling:
+:PROPERTIES:
+:CUSTOM_ID: t2
+:ASSIGNEE:
+:BLOCKED_BY:
+:END:
+
+*** Question
+
+Five observable behaviours the spec must state, all graduated from the design
+interview's open items. Each is a decision, not a discovery:
+
+1. Empty query followed by Enter — undefined today. Does `seek` treat it as a
+   cancel, or leave the cursor where copy-mode entry put it?
+2. A query matching only deep in the scrollback jumps the view far from the
+   current screen (history-limit is 100000). Bound the search range, or accept it?
+3. A match spanning two words (querying `a b`) leaves `copy_cursor_word` returning
+   only the word under the cursor, not the whole match — measured. What does the
+   `w` / `W` word grain mean in that case?
+4. copy-mode in an alt-screen pane (vim, less, claude fullscreen) has only the
+   visible region, no scrollback. Should `seek` warn there the way `to-emacs` does
+   (commit 33b86e5), stay silent, or refuse?
+5. `prefix Space` runs `set-mark` so a cancel can be undone with `M-x`, which
+   clobbers a manually set mark. Acceptable, or should the origin be tracked some
+   other way?
+
+Answering these fixes what the binary observes and reports, so it blocks the CLI
+surface ticket.
