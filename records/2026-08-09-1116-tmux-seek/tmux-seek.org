@@ -526,7 +526,7 @@ build --release=, fixing the string the CLI-surface grill left unnamed.
 ** TODO Binding placement and load ordering :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t8
-:ASSIGNEE:
+:ASSIGNEE: claude-grill-session
 :BLOCKED_BY:
 :END:
 
