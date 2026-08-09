@@ -36,6 +36,8 @@ Vocabulary: [[file:../../CONTEXT.org][CONTEXT.org]].
 
 * Not yet specified
 
+- Whether seek's pure functions (the hybrid grain splitter, the path classifier) get table-driven unit tests, given every sibling crate carries #[cfg(test)] while ticket t4 settled on manual verification only
+
 * Out of scope
 
 Reinstating a zero-input mode that labels every path on screen. The loss of that
