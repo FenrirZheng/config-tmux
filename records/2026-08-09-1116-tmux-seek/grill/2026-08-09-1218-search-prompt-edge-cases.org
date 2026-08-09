@@ -1,0 +1,91 @@
+#+TITLE: search-prompt-edge-cases
+
+Grilled within [[file:../tmux-seek.org::#t2][Search-prompt edge-case semantics]].
+
+* Decisions
+
+- Empty query followed by Enter keeps tmux's native behaviour — measured: the cursor
+  returns to the copy-mode entry origin (y 1 back to 3) and the pane stays in
+  copy-mode, which already matches the =v= key's decision to stay there.
+- A query matching only deep in the scrollback is allowed to jump the view rather than
+  being bounded — tmux ships no range-limited search command, so bounding would mean
+  writing our own search engine, which is the architecture
+  [[file:../../../docs/adr/0001-build-seek-on-tmux-builtin-incremental-search.org][ADR-0001]] rejected.
+- The search prompt opens empty rather than prefilled — the stock =C-r= binding uses
+  =-I "#{pane_search_string}"=, and prefill plus Enter would silently re-run the last
+  search at the exact moment the user believes they typed nothing.
+- Match semantics need no work at all: =search-backward-incremental= is plain text, not
+  a regular expression — measured with a positive control, where =axb= moved the cursor
+  onto its line while =a.b= reached =pane_search_string= yet matched nothing, so the dot
+  never stood in for the =x=.
+- Word grain is hybrid — a single-token query yields the whole word containing the
+  match, a query containing whitespace yields the matched text itself. Measured:
+  searching =alpha bravo= inside =alpha bravo charlie= leaves both =copy_cursor_word=
+  and =select-word= returning only =alpha=, so the containing-word answer is simply
+  wrong for a multi-token query.
+- The alt-screen warning lives in two places: the prompt label branches through
+  =if-shell -F '#{alternate_on}'= into =(seek ⚠ visible screen only)=, and seek appends
+  =to-emacs='s existing wording to its own =display-message=. Measured: a
+  =display-message= issued at entry is overwritten by the prompt that opens right
+  after it — the warning was last drawn at byte 2618 against the prompt's 3198 — so the
+  prompt label is the only place visible while the user is still typing.
+- =set-mark= clobbering a manually set mark is accepted, keeping =set-mark= plus the
+  already-bound =M-x= as the way back — nothing in tmux.conf, claude.conf or cheat.txt
+  references =X=, =M-x= or =P=, so no existing workflow depends on the mark.
+- Whether a search actually happened is detected by an origin stamp: the binding runs
+  =set -p -F @seek_origin "#{copy_cursor_y},#{copy_cursor_x}"= after entering
+  copy-mode, and seek fails closed while the cursor still equals it. Measured:
+  =pane_search_string= is sticky — it still read =axb= after a subsequent empty search
+  — so trusting it directly would walk the cursor left by a stale query length and
+  grab text the user never selected.
+- The stamp is a one-shot token, consumed with =set -p -u= and consumed *before* seek
+  acts, so a run that dies partway cannot leave a stale stamp behind for the next
+  keypress. Measured: after the unset, =show -p -v= exits 1, making absence a
+  distinguishable state rather than an empty string.
+- With no token present — copy-mode entered by mouse wheel or =prefix C-t= — the five
+  keys act as general grabbers: no =cursor-left=, just take the word or line under the
+  cursor. =v= alone fails closed there, since its whole job is returning to a match
+  start that does not exist.
+
+* Rejected alternatives
+
+- Bounding the search range so the view cannot jump — needs a self-written search, the
+  architecture ADR-0001 rejected.
+- Word grain always taking the containing word, or always taking the matched text — the
+  first answers =alpha= when the user asked for =alpha bravo=; the second throws away
+  the whole point of typing three characters to get a full path.
+- Passing over alt-screen panes silently, and refusing to open there at all — the first
+  hides a real difference the user cannot see, the second blocks a search that does
+  still work on the visible rows.
+- Warning only through a =display-message= at entry — measured to be overwritten by the
+  prompt before the user can read it.
+- Storing the origin in a pane option in order to *restore* the cursor — storing works,
+  restoring does not: =copy_cursor_y= is view-relative while =goto-line= takes a
+  history-absolute line, and =scroll_position + copy_cursor_y= did not compose either
+  (computed 169 where 5 was needed). Comparison-only use survives; restoration would be
+  its own piece of work.
+- Detecting liveness by comparing origin *and* previous query — a second stamp to keep
+  in sync, still not airtight when the same string is searched twice from the same spot.
+- Trusting =pane_search_string= directly — the sticky-value measurement rules it out.
+- Prefilling the prompt with the previous query, as stock =C-r= does.
+- Making the five keys fail closed outside a seek search — rejected in favour of the
+  general-grabber behaviour, which costs nothing once the token exists.
+
+* Open items
+
+- The binding now has two branches, alt-screen and normal, that must stay in sync by
+  hand. Resolved by deciding where they live — a single source with the label
+  substituted, or two literal branches in claude.conf.
+- A match landing exactly on the origin cell reads as "no search happened". The origin
+  is the pane's live cursor at the bottom, where text essentially never sits, but the
+  false negative is real. Resolved by accepting it in the runbook or finding a
+  liveness signal that does not depend on position.
+- The hybrid grain constrains the copy-pipe route still open in
+  [[file:../tmux-seek.org::#t3][seek CLI surface and failure contract]]: =select-word=
+  cannot express "take the matched text" for a multi-token query, so that case would
+  need =begin-selection= plus repeated =cursor-right=. Resolved when that ticket picks
+  between wl-copy and copy-pipe.
+- A query that is only whitespace, or one with a trailing space, has undefined grain
+  under the hybrid rule. Resolved by specifying both in the CLI surface ticket.
+
+Probe scripts: [[file:../assets/scripts/t2-probe.sh][t2-probe.sh]] and [[file:../assets/scripts/t2-probe2.sh][t2-probe2.sh]].
