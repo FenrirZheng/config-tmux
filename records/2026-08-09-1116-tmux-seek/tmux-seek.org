@@ -116,7 +116,7 @@ Probe scripts: [[file:assets/scripts/osc52-probe.sh][osc52-probe.sh]] and [[file
 ** TODO Search-prompt edge-case semantics :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t2
-:ASSIGNEE:
+:ASSIGNEE: claude-grill-session
 :BLOCKED_BY:
 :END:
 
