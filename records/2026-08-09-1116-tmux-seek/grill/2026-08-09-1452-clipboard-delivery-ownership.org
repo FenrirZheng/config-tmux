@@ -1,0 +1,56 @@
+#+TITLE: clipboard-delivery-ownership
+
+Grilled within [[file:../tmux-seek.org::#t6][Clipboard delivery ownership across the output keys]].
+
+* Decisions
+
+- All four output keys write both sinks: =wl-copy= for the Wayland clipboard *and*
+  =tmux set-buffer= for the tmux buffer. This restores what the 1116 design snapshot
+  (decision 3) and ADR-0001's drivers promised and what both thumbs commands at
+  tmux.conf lines 57 and 68 actually did — =prefix ]= keeps working, and the buffer is
+  the natural fallback when wl-copy is unavailable. ADR-0002 stands unamended: it chose
+  the wl-copy *route* over copy-pipe; a second sink does not contradict the route.
+- seek owns the clipboard uniformly on every key: it writes both sinks first, then (on
+  =W= / =L=) invokes to-claude. On the =L= path to-claude's =--paste= mode writes the
+  clipboard a second time with the same bytes — verified in
+  [[file:../../../tools/to-claude/src/main.rs][to-claude/src/main.rs]]: =Mode::Paste= calls =copy_to_clipboard=, =Mode::Ref= does
+  not. The double write is accepted as harmless; the sibling tool is not modified.
+- wl-copy missing or failing degrades with a changed message: =set-buffer= still
+  happens, exit stays 0, and the report becomes =→ BUFFER <text> (wl-copy failed)=-
+  shaped so the user knows the grab lives in the tmux buffer. The house best-effort
+  precedent (to-claude's =copy_to_clipboard= doc: a machine without wl-copy "still
+  delivers to the pane, which is the part the caller asked for") is deliberately *not*
+  followed on =w= / =l=, because there the clipboard is the primary deliverable, not a
+  side channel. Exact wording belongs to [[file:../tmux-seek.org::#t7][Status-line message safety and shape]].
+- seek swallows to-claude's exit code and always exits 0 itself. Verified: to-claude's
+  =fail()= both display-messages and prints to stderr before returning 1, so the
+  failure is already visible; letting the 1 propagate would add a tmux error popup on
+  top, and ARCHITECTURE.md's exit-0 convention forbids it.
+- Derived rule, from the walk: *the message reports the primary deliverable's fate*.
+  On =W= / =L= seek stays silent even when wl-copy fails — the uppercase keys' primary
+  deliverable is the Claude pane and the clipboard is the bonus half, mirroring
+  to-claude's own best-effort philosophy; and mechanically, seek writes the clipboard
+  before invoking to-claude, so any seek failure message would be overwritten by
+  to-claude's =→ CLAUDE= line anyway.
+
+* Rejected alternatives
+
+- Confirming the =set-buffer= drop as intentional — turns a silent regression into a
+  recorded one but still breaks =prefix ]= for no saving worth naming.
+- Teaching to-claude's =--ref= mode to write the clipboard — modifies a sibling tool
+  shared by five call sites (=prefix e=, =copy-mode Y= and the current thumbs
+  bindings), changing their behaviour as a side effect of a seek decision.
+- Splitting ownership by mode — seek clipboards on the =--ref= path only and lets
+  =--paste= rely on to-claude. No double write, but the four keys stop being
+  symmetric, and a future to-claude change would break =L='s clipboard silently.
+- Silent best-effort on =w= / =l= — hides the failure of the key's primary
+  deliverable behind a =→ CLIP= message that claims success.
+- Fail-closed on wl-copy failure — refuses to deliver text that is already sitting in
+  the tmux buffer.
+- seek re-reporting to-claude failures — two messages racing for one status line.
+
+* Open items
+
+- The degrade-message wording, the =→ CLIP= / =→ BUFFER= strings and their
+  sanitization all land in [[file:../tmux-seek.org::#t7][Status-line message safety and shape]], which this close
+  unblocks.
