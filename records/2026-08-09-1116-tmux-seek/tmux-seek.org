@@ -41,6 +41,7 @@ t1-t4 Resolutions as superseded wherever it contradicts them.
 - [[#t4][Key-table coverage and documentation surface]] — pin mode-keys and status-keys instead of double-binding; seek gets a runbook, per-key cheat.txt entries, one row in each ARCHITECTURE table, and a tools/ workspace step in the parent bootstrap
 - [[#t5][Origin stamp contract redesign]] — stamp deleted: search_present is the liveness signal, backward search already lands on the match start, v is removed, and delivery exits copy-mode
 - [[#t6][Clipboard delivery ownership across the output keys]] — all four keys write wl-copy plus set-buffer, seek owns both sinks uniformly, wl-copy failure degrades with a changed message, and to-claude's exit code is swallowed
+- [[#t7][Status-line message safety and shape]] — all seek messages use display-message -l (injection structurally impossible), text truncates at 48 via tmuxlib, and the alt-screen suffix rides only on live-search deliveries
 
 * Not yet specified
 
@@ -464,7 +465,7 @@ The two questions this ticket asked, answered:
 This close unblocks [[#t7][Status-line message safety and shape]], which owns the exact
 message strings and their sanitization.
 
-** TODO Status-line message safety and shape :grilling:
+** DONE Status-line message safety and shape :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t7
 :ASSIGNEE: claude-grill-session
@@ -495,6 +496,32 @@ contradict other decisions. See [[file:assets/destination-review-2026-08-09.md][
 
 Blocked on the stamp and clipboard tickets because the set of reportable states and the
 set of deliveries are both inputs to what the messages must say.
+
+*** Resolution
+
+Settled in [[file:grill/2026-08-09-1502-status-line-message-safety.org][the 2026-08-09-1502 grill snapshot]] — five decisions, five rejected
+alternatives, one accepted cosmetic limit. No ADR: every piece is a one-line reversible
+choice.
+
+The three concerns this ticket carried, answered:
+
+1. Injection: every =display-message= seek issues carries =-l=, which prints the
+   message unchanged — measured: =literal:#{pane_pid}= renders verbatim under =-l= and
+   expands without it. =sanitize_format()= is deliberately not used on this path:
+   ARCHITECTURE.md's mandate covers text entering a format context, and seek no longer
+   has one anywhere (no pane options since the stamp was deleted, no expanding
+   messages with =-l=). This closes the destination review's format-injection blocker
+   with a mechanism rather than a filter.
+2. Truncation: =<text>= is cut at 48 characters with =tmuxlib::truncate=, matching
+   =@claude_activity='s house contract.
+3. The alt-screen suffix rides on =w= / =l= messages only when =search_present=1= and
+   =alternate_on=1= — coverage warnings are meaningless in grabber mode. The
+   prompt-label half of the warning is untouched.
+
+The message table: =→ CLIP <text≤48>=; =→ BUFFER <text≤48> (wl-copy failed)=;
+=seek: nothing under the cursor= (stays in copy-mode); silence on =W= / =L= where
+to-claude speaks; and the guard stub says =seek: not built — cd ~/.tmux/tools && cargo
+build --release=, fixing the string the CLI-surface grill left unnamed.
 
 ** TODO Binding placement and load ordering :grilling:
 :PROPERTIES:
