@@ -172,6 +172,13 @@ binary behave when something is missing?
   binding guard on existence, or is a tmux error popup the accepted outcome?
 - Where the path-shaped test lives that routes a word to `--ref` versus
   `--paste`, and what regexp it uses.
+- Which of the two clipboard routes the clipboard ticket left open: shell out to
+  `wl-copy`, or drive `select-word` / `select-line` then `copy-pipe-and-cancel`
+  and let `set-clipboard on` deliver. The second route also hands over the
+  selection highlight and can pipe to to-claude in the same tmux call, but it
+  exits copy-mode — which collides with the `v` key staying there — and only
+  reaches the clipboard while the pane is visible in the client's current window.
+  Whichever wins reshapes the argument surface, so settle it first.
 
 ** TODO Key-table coverage and documentation surface :grilling:
 :PROPERTIES:
