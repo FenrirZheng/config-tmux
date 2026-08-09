@@ -49,8 +49,6 @@ t1-t4 Resolutions as superseded wherever it contradicts them.
 
 * Not yet specified
 
-- Whether the runbook's Install section pins the reload command the way runbooks/to-emacs.md step 3 does with tmux source-file ~/.tmux/tmux.conf
-
 * Out of scope
 
 Reinstating a zero-input mode that labels every path on screen. The loss of that
