@@ -40,6 +40,7 @@ Vocabulary: [[file:../../CONTEXT.org][CONTEXT.org]].
 - The order and acceptance criteria for the eight artifacts the build touches across two repos — the key-table grill defers this to an execution checklist that does not exist yet
 - Why a working plugin is being removed at all: the only driver on record is that removing thumbs would break the to-claude --ref path, which is circular, so the ROI of a Rust crate plus runbook plus doc edits cannot be judged
 - The load-time guard is one-directional — it covers unbuilt-becomes-stubs but not a later cargo clean leaving live keys pointing at a vanished binary
+- Whether the runbook's Install section pins the reload command the way runbooks/to-emacs.md step 3 does with tmux source-file ~/.tmux/tmux.conf
 
 * Out of scope
 
