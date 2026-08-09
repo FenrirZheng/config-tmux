@@ -698,7 +698,7 @@ The two questions this ticket asked, answered:
 ** TODO The specification artifact and the scope boundary :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t11
-:ASSIGNEE:
+:ASSIGNEE: claude-grill-session
 :BLOCKED_BY:
 :END:
 
