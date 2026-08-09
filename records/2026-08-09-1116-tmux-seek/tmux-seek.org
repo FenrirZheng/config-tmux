@@ -467,7 +467,7 @@ message strings and their sanitization.
 ** TODO Status-line message safety and shape :grilling:
 :PROPERTIES:
 :CUSTOM_ID: t7
-:ASSIGNEE:
+:ASSIGNEE: claude-grill-session
 :BLOCKED_BY: t5 t6
 :END:
 
