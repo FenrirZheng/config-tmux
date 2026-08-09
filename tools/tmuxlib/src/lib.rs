@@ -353,8 +353,23 @@ pub fn focus_pane(client: Option<&str>, pane: &str) -> Result<(), String> {
 }
 
 /// Flash a message on the status line. Never fails the caller.
+///
+/// **Expands tmux formats.** Safe for constants and for values already through
+/// [`sanitize_format`]; for anything derived from pane text use
+/// [`message_literal`] instead.
 pub fn message(text: &str) {
     let _ = tmux(["display-message", text]);
+}
+
+/// Flash a message on the status line **without format expansion**.
+///
+/// `display-message` expands `#{...}` in its argument, so [`message`] would
+/// re-interpret text captured from a pane: a grabbed word containing
+/// `#{pane_pid}` renders as a pid instead of itself. `-l` prints the string
+/// unchanged, which is the whole injection defence for tools that echo grabbed
+/// text back at the user — `seek` relies on it and must never use [`message`].
+pub fn message_literal(text: &str) {
+    let _ = tmux(["display-message", "-l", text]);
 }
 
 // ---------------------------------------------------------------------------

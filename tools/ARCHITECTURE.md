@@ -88,6 +88,11 @@ in `talk send` too.
 | `cc-layout` | `snapshot` / `restore` | layout-resurrect |
 | `talk-fleet` | `role` / `bcast` / `collect` | talk-fleet-dispatch |
 | `cc-tape` | `toggle` / `strip` | pane-tape |
+| `seek` | `word` / `line`, each with `--claude` | [records/2026-08-09-1116-tmux-seek](../records/2026-08-09-1116-tmux-seek) |
+
+`seek` is the one crate whose design doc is not a file in [`plans/`](../plans/): its
+specification is the wayfinder records directory above — read that map's **Current
+contract** section, which supersedes the tickets under it.
 
 ## Per-pane option contract
 
@@ -121,6 +126,16 @@ the per-tool-call hook from 21 ms to 4 ms.
 Anything derived from tool arguments passes through `sanitize_format()` before
 being stamped: an activity string of `echo #{pane_pid}` must render literally,
 not expand.
+
+**That mandate covers text entering a *format context*** — a pane option, a
+border format, a `display-message` without `-l`. It is not the only way to be
+safe. `seek` echoes raw pane text back to the status line and deliberately does
+*not* sanitize it: it stamps no options and passes `-l` on every message, so
+there is no format context to escape from, and filtering would corrupt the text
+the user asked to copy. The rule for a new tool is therefore: **either** keep
+untrusted text out of every format context (and prove it, as `seek` does), **or**
+sanitize. Note `tmuxlib::message()` expands formats — use
+[`message_literal()`](tmuxlib/src/lib.rs) for anything derived from pane text.
 
 ## Key bindings
 
