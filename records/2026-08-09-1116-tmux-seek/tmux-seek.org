@@ -468,3 +468,28 @@ ticket asked and did not answer. See [[file:assets/destination-review-2026-08-09
    slash, or `file.ext:123`, or a bare `name.ext`", which leaves the implementer to
    decide whether `v0.15.1`, `1.5`, `..`, or a bare `Makefile` route to `--ref` or to
    `--paste`. Write the literal pattern and name its edge cases.
+
+** TODO Rollback and cutover for the thumbs removal :grilling:
+:PROPERTIES:
+:CUSTOM_ID: t10
+:ASSIGNEE:
+:BLOCKED_BY:
+:END:
+
+*** Question
+
+Removing tmux-thumbs has no recorded way back, and the cutover shape was never a stated
+decision. See [[file:assets/destination-review-2026-08-09.md][the destination review]], blocker 10.
+
+The map says to remove the `@plugin` line, the `@thumbs-*` options and the `run-shell`,
+and to delete `plugins/tmux-thumbs/`. That directory is gitignored — `/.tmux/plugins/*`
+in the root .gitignore — so the deletion is not recoverable from this repo's history,
+and reverting only tmux.conf would leave `run-shell` pointing at a directory that is no
+longer there. The restore path exists (TPM `prefix I`, then `tmux-thumbs-install.sh`
+rebuilds the binary) but is written down nowhere.
+
+Decide the cutover: is the removal staged behind a verification period, or big-bang? A
+big-bang cutover is a legitimate choice — it just has not been recorded as one. The
+parallel-run option (thumbs kept on a different key) was declined during the design
+interview for feature-scope reasons, not rollout-risk reasons, so the rollout question
+was never actually asked.
