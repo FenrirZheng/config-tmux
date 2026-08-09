@@ -1,0 +1,45 @@
+#+TITLE: tmux-seek
+#+TODO: TODO | DONE CANCELLED
+
+* Destination
+
+A written specification for =seek= — the copy-mode jump tool that replaces
+tmux-thumbs on ~prefix Space~ — complete enough that someone can build the crate and
+rewire tmux.conf without making another design decision. Implementation is not part
+of this effort.
+
+* Notes
+
+Working repo: =/home/fenrir/.tmux= on branch =main= (a submodule of the =$HOME= repo;
+inner commit first, then bless the gitlink in =$HOME=).
+
+The core design is already settled — read these two before touching any ticket:
+
+- [[file:grill/2026-08-09-1116-tmux-seek.org][Design interview snapshot]] — 17 decisions with their measurements, 6 rejected
+  alternatives, and the open items most of these tickets graduate from.
+- [[file:../../docs/adr/0001-build-seek-on-tmux-builtin-incremental-search.org][ADR-0001]] — why =seek= is built on tmux's built-in incremental search.
+
+Binding conventions every ticket must respect, from [[file:../../tools/ARCHITECTURE.md][the toolset architecture doc]]:
+binaries exit 0 when there is nothing to do (a non-zero exit becomes a tmux error
+popup), never write pane titles, and call =tmux display-message= whenever they
+deliver text somewhere so a mis-send is visible. New crates register in both the
+Crates table and the Key bindings table there.
+
+Vocabulary: [[file:../../CONTEXT.org][CONTEXT.org]].
+
+* Decisions so far
+
+* Not yet specified
+
+- Whether =seek= needs a fresh-machine bootstrap step, and whether that belongs in the
+  parent repo's CLAUDE.md bootstrap list or in this repo's runbook
+- How =seek= gets verified end to end, given that the tmux command prompt lives on the
+  client status line and can only be driven by a fifo-fed client
+
+* Out of scope
+
+Reinstating a zero-input mode that labels every path on screen. The loss of that
+tmux-thumbs behaviour was raised explicitly during the design interview and accepted;
+revisiting it is a new effort, not a decision on the way to this destination.
+
+* Tickets
