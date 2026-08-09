@@ -37,7 +37,6 @@ Vocabulary: [[file:../../CONTEXT.org][CONTEXT.org]].
 * Not yet specified
 
 - How seek gets verified end to end: the tmux command prompt can only be driven by a fifo-fed client, and OSC 52 clipboard delivery only fires while the pane is visible in the client's current window
-- Whether seek needs a fresh-machine bootstrap step, and whether that belongs in the parent repo's CLAUDE.md bootstrap list or in this repo's runbook
 
 * Out of scope
 
