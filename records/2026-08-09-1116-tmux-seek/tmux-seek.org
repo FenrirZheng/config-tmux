@@ -29,6 +29,8 @@ Vocabulary: [[file:../../CONTEXT.org][CONTEXT.org]].
 
 * Decisions so far
 
+- [[#t1][Clipboard delivery path for seek output]] — tmux emits OSC 52 only on copy events, never on set-buffer — seek's clipboard half needs wl-copy or copy-pipe
+
 * Not yet specified
 
 - Whether =seek= needs a fresh-machine bootstrap step, and whether that belongs in the
@@ -44,7 +46,7 @@ revisiting it is a new effort, not a decision on the way to this destination.
 
 * Tickets
 
-** TODO Clipboard delivery path for seek output :research:
+** DONE Clipboard delivery path for seek output :research:
 :PROPERTIES:
 :CUSTOM_ID: t1
 :ASSIGNEE: claude-seek-session
@@ -68,6 +70,50 @@ This decides whether seek's clipboard path is one tmux call or a shell-out, so i
 blocks the CLI surface. Answer with a measurement, not a reading of the docs:
 set a buffer from a detached command, then read the actual Wayland selection back
 with `wl-paste`, with a real client attached and again with none.
+
+*** Resolution
+
+Measured on tmux 3.5a + alacritty 0.15.1, this machine, 2026-08-09.
+
+| operation                                     | tmux buffer | Wayland clipboard |
+|-----------------------------------------------+-------------+-------------------|
+| =set-buffer=                                  | set         | unchanged         |
+| =copy-pipe-and-cancel=, background window     | set         | unchanged         |
+| =copy-pipe-and-cancel=, visible pane          | set         | set               |
+| OSC 52 written straight at the client tty     | n/a         | set               |
+
+Answer: =set-buffer= alone does NOT reach the Wayland clipboard, so the observation
+recorded at tmux.conf lines 63-66 is still accurate today — and the mechanism behind
+it is now known. tmux emits the OSC 52 escape only on *copy* events; setting a buffer
+is not one. A scripted-client capture showed no =ESC]52;= whatsoever for =set-buffer=,
+while =select-word= followed by =copy-pipe-and-cancel= emitted =ESC]52;;YWxwaGE=,
+which is base64 for "alpha" — the word that was selected.
+
+alacritty is not the limiting factor: =osc52 = "CopyPaste"= at alacritty.toml line 69,
+and writing an OSC 52 sequence straight at the client tty set the clipboard
+immediately. Neither is terminfo: the =Ms= capability is present for alacritty,
+xterm-256color and tmux-256color alike, so the negative results above are real
+negatives rather than capability artifacts.
+
+One further condition, also measured: the copy path reached the clipboard only when
+the pane was visible in the client's current window. The identical copy performed in
+a detached background window set the tmux buffer and left the clipboard untouched.
+seek's output keys are always pressed in a pane the user is looking at, so the
+condition holds in real use — but it rules the copy path out for anything headless.
+
+Consequence for the spec: seek cannot use =set-buffer= for the clipboard half. Two
+routes survive, and choosing between them belongs to the CLI surface ticket.
+
+- Shell out to =wl-copy=, as every existing capture-rail path does. Works regardless
+  of pane visibility and with no client attached.
+- Drive =select-word= or =select-line=, then =copy-pipe-and-cancel=, and let
+  =set-clipboard on= deliver. The clipboard comes free, the selection highlight comes
+  free, and =copy-pipe= can pipe to a command in the same call — which is exactly how
+  =copy-mode Y= already reaches to-claude. Two caveats: it needs the visible-pane
+  condition above, and =copy-pipe-and-cancel= exits copy-mode, which conflicts with
+  the =v= key's decision to stay there.
+
+Probe scripts: [[file:assets/scripts/osc52-probe.sh][osc52-probe.sh]] and [[file:assets/scripts/osc52-probe2.sh][osc52-probe2.sh]].
 
 ** TODO Search-prompt edge-case semantics :grilling:
 :PROPERTIES:
