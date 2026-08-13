@@ -1,0 +1,65 @@
+#+TITLE: cc-beacon
+#+ATLAS_TYPE: subsystem
+#+ATLAS_ID: cc-beacon
+#+ATLAS_GENERATOR: atlas/1
+
+* Summary
+
+cc-beacon is a single Rust binary invoked once per Claude Code hook event (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Notification, Stop, SessionEnd), plus a one-off =install-bar= call at tmux config load. Each event handler reads the hook's JSON payload off stdin, derives a lifecycle state (busy / idle / needs-input) and sometimes a short activity string, and writes them onto the calling pane's tmux options in one batched tmux invocation via tmuxlib. It also maintains a per-pane ticker log under =/tmp/claude-progress/=, rings the pane's tty BEL on Notification only when the human is not already looking at that pane, and on =install-bar= splices two status-bar segments (per-window worst-state glyph, whole-fleet "who needs me") into the user's theme formats idempotently. It is the only writer of the =@claude_state= family of pane options that every other crate reads; it deliberately never touches pane titles, which belong to =talk ping=. Two invariants run through the binary: every code path exits 0 (a hook must never block the agent), and any text derived from tool arguments passes =sanitize_format= before being stamped into a tmux format context.
+
+* Crux
+
+The whole binary is one event dispatch:
+
+#+begin_src rust :file cc-beacon/src/main.rs :lines 46-56
+match event.as_str() {
+    "session-start" => session_start(&pane, &payload),
+    "prompt" => prompt(&pane, &payload),
+    "activity" => activity(&pane, &payload),
+    "tool-done" => tool_done(&pane, &payload),
+    "attn" => attn(&pane),
+    "idle" => idle(&pane),
+    "clear" => clear(&pane),
+    _ => {}
+}
+#+end_src
+
+Every state write is one batched tmux call — state, timestamp, optional activity, refresh:
+
+#+begin_src rust :file cc-beacon/src/main.rs :lines 171-181
+fn stamp_with(pane: &str, state: t::State, set_activity: Option<&str>) {
+    let mut commands = vec![
+        set_pane(pane, t::OPT_STATE, state.as_str()),
+        set_pane(pane, t::OPT_SINCE, &t::now_epoch().to_string()),
+    ];
+    if let Some(activity) = set_activity {
+        commands.push(set_pane(pane, t::OPT_ACTIVITY, activity));
+    }
+    commands.push(vec!["refresh-client".to_string(), "-S".to_string()]);
+    t::tmux_batch(&commands);
+}
+#+end_src
+
+The attention path only rings the bell when the pane is off-screen:
+
+#+begin_src rust :file cc-beacon/src/main.rs :lines 122-127
+fn attn(pane: &str) {
+    stamp(pane, t::State::NeedsInput);
+    if !is_on_screen(pane) {
+        ring_bell(pane);
+    }
+}
+#+end_src
+
+* Links
+
+- depends_on :: [[file:tmuxlib-lib.org][tmuxlib's single source file]] — option names, State enum, tmux_batch, and sanitize_format all live there, not here
+- produces :: [[file:claude-state-protocol.org][the @claude_state lifecycle protocol]] — sole writer of every =@claude_*= pane option except =@claude_role=
+
+* Sources
+:SOURCES:
+:cc-beacon/src/main.rs: sha256:b435e27e7e026755ae49f80569363b36a9f9088d528911ff1cc422fcaa296e3d
+:cc-beacon/Cargo.toml: sha256:e7e3ae98f9f9e036d72850a14eb4eeb187d20d9396a42b9f4fbbadbcd8f5bc0c
+:END:
+
+* Notes

@@ -1,0 +1,73 @@
+#+TITLE: talk-fleet
+#+ATLAS_TYPE: subsystem
+#+ATLAS_ID: talk-fleet
+#+ATLAS_GENERATOR: atlas/1
+
+* Summary
+
+talk-fleet layers role addressing and fan-out on top of the bash =talk= primitives without touching them — every actual keystroke to a pane still goes through =talk send= / =talk ping= / =talk read-since=, shelled out to. =role set/unset/list= binds a human-readable name to a pane id under =/tmp/claude-talk/roles/<name>= and stamps =@claude_role= on the pane so the border format can badge it; =role list= doubles as garbage collection for dead panes. =bcast= resolves every target up front (a typo in target three must not leave two workers holding an uncollectable task), writes a manifest, and sends each worker a message carrying a unique marker line it must echo back. =collect= is the interesting state machine: it polls =talk ping= per worker and harvests a reply only on the busy→idle *edge* — an idle worker never seen busy is "hasn't started", not "done", which is what stops it reading back the echoed prompt instead of the answer. The =@role= addressing itself is not talk-fleet's code: it calls =tmuxlib::resolve_target=, the same function the patched bash =talk= uses, so exactly one role-resolution implementation serves both the Rust and bash halves of the toolset.
+
+* Crux
+
+The busy→idle-edge guard that is the whole point of collect:
+
+#+begin_src rust :file talk-fleet/src/main.rs :lines 292-304
+fn decide(done: bool, alive: bool, seen_busy: bool, ping: Ping) -> Action {
+    if done {
+        return Action::Skip;
+    }
+    if !alive {
+        return Action::RecordDead;
+    }
+    match ping {
+        Ping::Busy => Action::NoteBusy,
+        Ping::Idle if seen_busy => Action::Harvest,
+        Ping::Idle | Ping::Unknown => Action::KeepWaiting,
+    }
+}
+#+end_src
+
+Fail-closed pane resolution before any bcast send:
+
+#+begin_src rust :file talk-fleet/src/main.rs :lines 149-159
+fn resolve_pane_id(target: &str) -> Result<String, String> {
+    if target.trim().is_empty() {
+        return Err("empty pane target".to_string());
+    }
+    let id =
+        t::display(Some(target), "#{pane_id}").map_err(|_| format!("no such pane: {target}"))?;
+    if id.is_empty() || !t::pane_alive(&id) {
+        return Err(format!("no such pane: {target}"));
+    }
+    Ok(id)
+}
+#+end_src
+
+The shared =@role= resolver both talk-fleet and bash talk call into:
+
+#+begin_src rust :file tmuxlib/src/lib.rs :lines 490-499
+pub fn resolve_target(target: &str) -> Result<String, String> {
+    let Some(name) = target.strip_prefix('@') else {
+        return Ok(target.to_string());
+    };
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(format!("invalid role name: {target}"));
+    }
+#+end_src
+
+* Links
+
+- uses :: [[file:tmuxlib-lib.org][tmuxlib's single source file]] — resolve_target is the single shared role resolver for Rust and bash alike
+- configures :: [[file:claude-state-protocol.org][the @claude_state lifecycle protocol]] — writes =@claude_role=, the one option of the family cc-beacon does not own
+
+* Sources
+:SOURCES:
+:talk-fleet/src/main.rs: sha256:dbcd78b8844e0c3c2d7bc0dd65bff63efd675cfb019718212a89e0b589973643
+:tmuxlib/src/lib.rs: sha256:14689e2aa7a744eb9389257e8c6fecaa54de92075e439153ea388e0be2453b36
+:END:
+
+* Notes

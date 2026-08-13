@@ -1,0 +1,77 @@
+#+TITLE: attention navigation
+#+ATLAS_TYPE: subsystem
+#+ATLAS_ID: attention-navigation
+#+ATLAS_GENERATOR: atlas/1
+
+* Summary
+
+This subsystem is the "which pane needs me right now" layer, split across two binaries that share one ranking philosophy: needs-input always outranks idle, which always outranks busy/unknown. cc-attend is the two-key version (=prefix N= to jump, =prefix B= to bounce back) — it computes a single best target with =pick_target=, marks the pane you are leaving with tmux's own =select-pane -m= so =back= needs no bookkeeping of its own, then reports what it landed on via a sanitized status message. cc-fleet is the browse-everything version: one row per Claude pane (state glyph, age, target, cwd, task, last activity), sorted by the identical state-priority-then-age comparator, handed to fzf in a popup so a human picks manually instead of trusting the top pick. Both read pane state exclusively through =tmuxlib::Pane= (title-heuristic fallback included), and both keep their core logic pure over =&[Pane]= so the ranking is unit-tested without a live tmux server.
+
+* Crux
+
+The shared priority scale both pickers sort by:
+
+#+begin_src rust :file tmuxlib/src/lib.rs :lines 80-88
+/// Attention ranking: lower sorts first in every picker in this workspace.
+pub fn priority(self) -> u8 {
+    match self {
+        State::NeedsInput => 0,
+        State::Idle => 1,
+        State::Busy => 2,
+        State::Unknown => 3,
+    }
+}
+#+end_src
+
+=prefix N='s single-target selection: oldest blocked wins, else newest live idle:
+
+#+begin_src rust :file cc-attend/src/main.rs :lines 76-89
+fn pick_target<'a>(panes: &'a [Pane], now: u64, origin: &str) -> Option<&'a Pane> {
+    let live = || panes.iter().filter(|p| p.id != origin || origin.is_empty());
+
+    let blocked = live()
+        .filter(|p| p.state() == State::NeedsInput)
+        .min_by_key(|p| (p.since.is_none(), p.since.unwrap_or(0)));
+    if blocked.is_some() {
+        return blocked;
+    }
+
+    live()
+        .filter(|p| p.state() == State::Idle && !is_stale_idle(p, now))
+        .max_by_key(|p| (p.since.is_some(), p.since.unwrap_or(0)))
+}
+#+end_src
+
+cc-fleet's full-list ordering — same scale, longest-wait-first tiebreak:
+
+#+begin_src rust :file cc-fleet/src/main.rs :lines 93-105
+fn sorted(panes: &[t::Pane], now: u64) -> Vec<&t::Pane> {
+    let mut v: Vec<&t::Pane> = panes.iter().collect();
+    v.sort_by(|a, b| {
+        a.state()
+            .priority()
+            .cmp(&b.state().priority())
+            .then_with(|| {
+                b.age_secs(now)
+                    .unwrap_or(0)
+                    .cmp(&a.age_secs(now).unwrap_or(0))
+            })
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    v
+}
+#+end_src
+
+* Links
+
+- uses :: [[file:tmuxlib-lib.org][tmuxlib's single source file]] — Pane inventory, State parsing, and the priority scale all come from it
+- depends_on :: [[file:claude-state-protocol.org][the @claude_state lifecycle protocol]] — the ranking is only as good as the stamped states it reads
+
+* Sources
+:SOURCES:
+:cc-attend/src/main.rs: sha256:d4f6313e33a67b7e97adabd208b87430169ae033655bbf512addd1f8aca9d252
+:cc-fleet/src/main.rs: sha256:2979890117282bd58b491d5de09432792efb4e0d904c0d83e8fd82a103c043f9
+:tmuxlib/src/lib.rs: sha256:14689e2aa7a744eb9389257e8c6fecaa54de92075e439153ea388e0be2453b36
+:END:
+
+* Notes

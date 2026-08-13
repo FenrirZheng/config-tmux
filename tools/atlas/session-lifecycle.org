@@ -1,0 +1,79 @@
+#+TITLE: session lifecycle
+#+ATLAS_TYPE: subsystem
+#+ATLAS_ID: session-lifecycle
+#+ATLAS_GENERATOR: atlas/1
+
+* Summary
+
+cc-launch and cc-layout sit at opposite ends of a Claude session's life: one starts or resumes a single session interactively, the other freezes and rebuilds an entire tmux team of them across a server restart. =cc-launch resume= scans =~/.claude/projects/<slug>/*.jsonl= for past transcripts, shows an fzf picker keyed on each session's first prompt, and types =claude --resume <full-uuid>= into the calling pane — never an abbreviated id, because Claude Code rejects those. =cc-layout snapshot= walks every session/window/pane on the live server, capturing each pane's =@claude_session_id= and =@claude_task= alongside its cwd and the window's layout checksum, into an escaped TSV. =cc-layout restore= replays it: recreates sessions (appending =-restored= rather than colliding with a live name), applies each window's layout exactly once after all its panes exist, and for every pane whose recorded session id is a full UUID with a transcript on disk, types the same =claude --resume= line cc-launch would — same convention, same guard. Both tools are strictly "shell out to tmux + fzf", with no state of their own beyond the TSV and the pane options cc-beacon already owns.
+
+* Crux
+
+The resume picker's dispatch — full uuid only, hidden as fzf's first field:
+
+#+begin_src rust :file cc-launch/src/main.rs :lines 88-101
+// The uuid rides as a hidden first field: `--with-nth=2..` shows the rest.
+let Some(pick) = fzf(
+    &menu,
+    &["--delimiter=\t", "--with-nth=2..", "--prompt=resume> "],
+) else {
+    return;
+};
+let Some(uuid) = parse_pick(&pick) else {
+    return;
+};
+
+// Claude Code rejects abbreviated ids, so the full uuid goes across.
+send_line(pane, &format!("claude --resume {uuid}"));
+t::message(&format!("resuming {uuid} in {pane}"));
+#+end_src
+
+The same "never type a guess" guard in restore, decided as pure data first:
+
+#+begin_src rust :file cc-layout/src/main.rs :lines 927-935
+fn pane_action(p: &PaneRec, has_transcript: impl Fn(&str) -> bool) -> PaneAction {
+    if p.session_id.is_empty() {
+        return PaneAction::Shell;
+    }
+    if !is_full_uuid(&p.session_id) {
+        return PaneAction::Skip(format!(
+            "{:?} is not a full session UUID (--resume rejects short ids)",
+            p.session_id
+        ));
+    }
+#+end_src
+
+Where the decision gets typed into the restored pane — literal text, Enter separately:
+
+#+begin_src rust :file cc-layout/src/main.rs :lines 845-858
+PaneAction::Resume(uuid) => {
+    self.resumed += 1;
+    if self.dry || id.is_empty() {
+        return;
+    }
+    // Literal text, then Enter as its own key: one `send-keys` would
+    // have to push the whole line through tmux's key parser. And
+    // `claude --resume` is cwd-scoped, which is why the pane was
+    // created in its recorded cwd before this is typed.
+    let cmd = format!("claude --resume {uuid}");
+    if t::tmux(["send-keys", "-t", id, "-l", &cmd]).is_err()
+        || t::tmux(["send-keys", "-t", id, "Enter"]).is_err()
+    {
+        self.resumed -= 1;
+        self.skip(&format!("{at}  send-keys failed for {uuid}"));
+    }
+#+end_src
+
+* Links
+
+- uses :: [[file:tmuxlib-lib.org][tmuxlib's single source file]] — tmux plumbing, option reads, message reporting
+- depends_on :: [[file:claude-state-protocol.org][the @claude_state lifecycle protocol]] — =@claude_session_id= and =@claude_task= are what make a restored pane resumable
+
+* Sources
+:SOURCES:
+:cc-launch/src/main.rs: sha256:4fd1bc947775d4a554a8243f2cc338a41cf94cbdbcc590372103020727a33ef6
+:cc-layout/src/main.rs: sha256:613c0dddb0e914220e11352d60d280a7565f8a94dc7d7013cd2aedb674498163
+:tmuxlib/src/lib.rs: sha256:14689e2aa7a744eb9389257e8c6fecaa54de92075e439153ea388e0be2453b36
+:END:
+
+* Notes

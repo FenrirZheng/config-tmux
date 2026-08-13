@@ -1,0 +1,76 @@
+#+TITLE: text piping
+#+ATLAS_TYPE: subsystem
+#+ATLAS_ID: text-piping
+#+ATLAS_GENERATOR: atlas/1
+
+* Summary
+
+Four crates move text between a Claude pane and somewhere else, and they deliberately diverge on the one property that matters most — whether the text passes through a tmux format context. to-claude and to-emacs capture via =capture-pane= and report through =display-message=; to-claude additionally resolves *where* to deliver (marked pane first, else the most-recently-active Claude pane) and delivers via =send-keys -l= (typed, unsubmitted) or a bracketed =paste-buffer= for multi-line blocks. seek is copy-mode's grab-and-send: it classifies the grabbed token as a file reference or plain paste and pipes it to to-claude or the clipboard — and it is the one tool the architecture doc calls out as *intentionally bypassing* =sanitize_format()=, because it never stamps a pane option and always reports via =message_literal()= (no format expansion), so there is no format context to corrupt. cc-tape is the odd one out mechanically: it taps the pty byte stream via =pipe-pane= rather than snapshotting the screen, so it keeps recording through alt-screen TUIs where =capture-pane= goes blind. All four share the "never write pane titles, always report via display-message" discipline.
+
+* Crux
+
+The contract seek deliberately opts out of, in the library's own words:
+
+#+begin_src rust :file tmuxlib/src/lib.rs :lines 360-373
+pub fn message(text: &str) {
+    let _ = tmux(["display-message", text]);
+}
+
+/// Flash a message on the status line **without format expansion**.
+///
+/// `display-message` expands `#{...}` in its argument, so [`message`] would
+/// re-interpret text captured from a pane: a grabbed word containing
+/// `#{pane_pid}` renders as a pid instead of itself. `-l` prints the string
+/// unchanged, which is the whole injection defence for tools that echo grabbed
+/// text back at the user — `seek` relies on it and must never use [`message`].
+pub fn message_literal(text: &str) {
+    let _ = tmux(["display-message", "-l", text]);
+}
+#+end_src
+
+seek's own enforcement, at its single reporting call site:
+
+#+begin_src rust :file seek/src/main.rs :lines 26-33
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Err(msg) = run(&args) {
+        t::message_literal(&format!("seek: {msg}"));
+    }
+    // Deliberately no non-zero exit on any path: a failing binding surfaces as
+    // a tmux error popup (tools/ARCHITECTURE.md, "Conventions").
+}
+#+end_src
+
+The pipe wiring that makes cc-tape a stream tap, not a screen capture:
+
+#+begin_src rust :file cc-tape/src/main.rs :lines 238-250
+divider(&log, "tape on");
+let cmd = format!(
+    "exec {} strip >> {}",
+    sh_quote(&self_exe()),
+    sh_quote(&shown)
+);
+// tmux runs the pipe command through `sh` *after* expanding it as a
+// format string, so `#` has to survive the expansion pass first.
+if t::tmux_ok(["pipe-pane", "-t", pane, "-o", &esc_hash(&cmd)]) {
+    t::message(&esc_hash(&format!("cc-tape: ●REC on — {shown}")));
+} else {
+    t::message(&format!("cc-tape: pipe-pane failed for {pane}"));
+}
+#+end_src
+
+* Links
+
+- uses :: [[file:tmuxlib-lib.org][tmuxlib's single source file]] — capture plumbing, message vs message_literal, pane resolution
+- depends_on :: [[file:claude-state-protocol.org][the @claude_state lifecycle protocol]] — to-claude's "most recently active Claude pane" target resolution reads the stamped options
+
+* Sources
+:SOURCES:
+:to-claude/src/main.rs: sha256:8ab05d5c0b2df6d8b38444071c1f7a0b39596600b84fa800d32d65a47aa6f34e
+:to-emacs/src/main.rs: sha256:67757bfa3605a0f35c789e4158c34c759b88188449613bcdd7bf9cf679f424e4
+:seek/src/main.rs: sha256:4abf0de73e255936e1fa69ac448dd4c9b03a28d706a98045ebf5a733ac061818
+:cc-tape/src/main.rs: sha256:a11e930d2ecf406e6d45001c6184770640234e01780606f9784b20266cfa20e9
+:tmuxlib/src/lib.rs: sha256:14689e2aa7a744eb9389257e8c6fecaa54de92075e439153ea388e0be2453b36
+:END:
+
+* Notes

@@ -1,0 +1,53 @@
+#+TITLE: tmuxlib's single source file
+#+ATLAS_TYPE: file
+#+ATLAS_ID: tmuxlib-lib
+#+ATLAS_GENERATOR: atlas/1
+
+* Summary
+
+tmuxlib is a one-file library crate (~630 lines, no submodules), and that file is the shared API every other binary in the workspace links against — its own doc comment calls the option constants "the whole cross-tool API surface". It defines the =@claude_*= pane-option name constants and the State enum (NeedsInput / Idle / Busy / Unknown) with parsing, glyph, and priority-ordering logic; wraps every tmux invocation through =tmux()= / =tmux_ok()= / =tmux_batch()= (with a =CC_TMUX_SOCKET= test seam); builds the pane inventory (=Pane= + =list_claude_panes()=) by parsing one tab-separated =list-panes -F= format string; and centralizes the two safety-critical text-hygiene functions, =sanitize_format()= and =message_literal()=. All ten other crates depend on this file via =tmuxlib = { workspace = true }= — changing an option name, a State transition, or the sanitize rule here changes behavior everywhere at once. It also owns the pane-title fallback heuristic (=title_state=) so panes started before the hooks existed still report a usable state.
+
+* Crux
+
+State resolution: stamped option first, title heuristic as the graceful fallback:
+
+#+begin_src rust :file tmuxlib/src/lib.rs :lines 282-296
+pub fn state(&self) -> State {
+    let stamped = State::parse(&self.state_raw);
+    if stamped != State::Unknown {
+        return stamped;
+    }
+    title_state(&self.title)
+}
+
+pub fn is_claude(&self) -> bool {
+    if !self.state_raw.is_empty() || !self.session_id.is_empty() {
+        return true;
+    }
+    title_state(&self.title) != State::Unknown
+}
+#+end_src
+
+The format-injection defense every untrusted string passes through:
+
+#+begin_src rust :file tmuxlib/src/lib.rs :lines 386-392
+pub fn sanitize_format(s: &str) -> String {
+    s.chars()
+        .filter(|c| !matches!(c, '#' | '{' | '}' | '%' | ';' | '\n' | '\r' | '\t'))
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+#+end_src
+
+* Links
+
+- implements :: [[file:claude-state-protocol.org][the @claude_state lifecycle protocol]] — State::parse and priority ordering are defined once, here, for every reader
+
+* Sources
+:SOURCES:
+:tmuxlib/src/lib.rs: sha256:14689e2aa7a744eb9389257e8c6fecaa54de92075e439153ea388e0be2453b36
+:tmuxlib/Cargo.toml: sha256:c7ef0d685fc887c73db848046830140b0b70e8220725870f9f692768f1bdb7c7
+:END:
+
+* Notes

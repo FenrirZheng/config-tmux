@@ -1,0 +1,30 @@
+#+TITLE: tmux tools atlas
+#+ATLAS_GENERATOR: atlas/1
+
+* How to use this atlas
+
+Read the node before the source: each node explains one part of this workspace in prose, quotes the lines that carry the logic, and names its exact source files. Follow the typed links between nodes instead of re-deriving structure by grepping. The atlas covers understanding, not every file — the Coverage section below says what it does not claim to explain; grep the repo for that. Check freshness once per session:
+
+: python3 ~/.claude/skills/atlas-build/scripts/atlas-stale.py --dir ~/.tmux/tools/atlas
+
+* Nodes
+
+** Subsystems
+
+- [[file:attention-navigation.org][attention navigation]] — ranks Claude panes by need and jumps or lists them, oldest-blocked first · covers: cc-attend/, cc-fleet/
+- [[file:cc-beacon.org][cc-beacon]] — only writer of Claude's tmux lifecycle state; 7 hook events → pane options + status glyphs · covers: cc-beacon/
+- [[file:session-lifecycle.org][session lifecycle]] — launches/resumes Claude sessions and snapshots/restores whole tmux teams across restarts · covers: cc-launch/, cc-layout/
+- [[file:talk-fleet.org][talk-fleet]] — addresses Claude panes by role name and broadcasts/collects a task across many · covers: talk-fleet/
+- [[file:text-piping.org][text piping]] — pipes pane text, scrollback, and copy-mode grabs into Claude, Emacs, or a tape · covers: to-claude/, to-emacs/, seek/, cc-tape/
+
+** Files
+
+- [[file:tmuxlib-lib.org][tmuxlib's single source file]] — the one file every crate links; state model, pane inventory, tmux plumbing, format-injection defense · covers: tmuxlib/src/lib.rs
+
+** Concepts
+
+- [[file:claude-state-protocol.org][the @claude_state lifecycle protocol]] — tmux pane options as shared truth for Claude session lifecycle; written once, read live everywhere · covers: 9 files
+
+* Coverage
+
+7 nodes over 14 source files — every crate in the workspace is covered by some node. Deliberately not explained: per-crate internals beyond each crux (cc-tape's strip mode, cc-launch's project/pair flows, cc-layout's TSV escaping), the bash =talk= primitives themselves (they live outside this workspace, in =~/.tmux=), and the cargo build system. Leaf subsystems (attention-navigation, session-lifecycle, talk-fleet, text-piping) have no inbound edges by design — nothing in the workspace depends on them; the link checker reports them as orphans, which is accepted and expected for a star-shaped codebase.
