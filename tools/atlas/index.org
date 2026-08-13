@@ -3,9 +3,7 @@
 
 * How to use this atlas
 
-Read the node before the source: each node explains one part of this workspace in prose, quotes the lines that carry the logic, and names its exact source files. Follow the typed links between nodes instead of re-deriving structure by grepping. The atlas covers understanding, not every file — the Coverage section below says what it does not claim to explain; grep the repo for that. Check freshness once per session:
-
-: python3 ~/.claude/skills/atlas-build/scripts/atlas-stale.py --dir ~/.tmux/tools/atlas
+Read the node before the source: each node explains one part of this workspace in prose, quotes the lines that carry the logic, and names its exact source files. Follow the typed links between nodes instead of re-deriving structure by grepping. The atlas covers understanding, not every file — the Coverage section below says what it does not claim to explain; grep the repo for that. With the atlas-nav skill installed, follow its discipline (it verifies node freshness once per session); without it, treat nodes as helpful but unverified — where a node and the source disagree, the source wins.
 
 * Nodes
 
