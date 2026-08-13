@@ -5,7 +5,7 @@
 
 * Summary
 
-Every Claude Code session's lifecycle — working, waiting for input, blocked on a permission prompt — is represented as a small set of tmux pane user options (=@claude_state=, =@claude_since=, =@claude_activity=, =@claude_task=, =@claude_session_id=, =@claude_role=) rather than as a file or a daemon: tmux itself is the shared, always-live store, and any binary reads a pane's state with one =show-options -p= call. cc-beacon is the sole writer, mapping each of the 7 hook events to a State transition defined once in tmuxlib; all consumers (cc-attend's "jump to neediest pane", cc-fleet's picker rows, talk-fleet's state-aware fan-out, the status-bar glyphs) parse the same option through the same =State::parse= / =priority()= logic, so ordering — "blocked wins" — is defined in exactly one place. There is deliberately no stored per-window or per-fleet rollup: tmux's own =#{P:}= / =#{W:}= format loops compute "does this window hold a blocked agent" live from per-pane options on every status refresh, which dropped hot-path hook latency from 21ms to 4ms versus the earlier stored-rollup design (ARCHITECTURE.md). Panes that predate the hooks fall back to a pane-title glyph heuristic instead of reporting Unknown. The protocol's defensive half: anything written into these options first passes =sanitize_format()=, because the values are later substituted into tmux format strings where raw =#{...}= would be re-expanded.
+Every Claude Code session's lifecycle — working, waiting for input, blocked on a permission prompt — is represented as a small set of tmux pane user options (=@claude_state=, =@claude_since=, =@claude_activity=, =@claude_task=, =@claude_session_id=, =@claude_role=) rather than as a file or a daemon: tmux itself is the shared, always-live store, and any binary reads a pane's state with one =show-options -p= call. cc-beacon is the sole writer, mapping each of the 7 hook events to a State transition defined once in tmuxlib; all consumers (cc-attend's "jump to neediest pane", cc-fleet's picker rows, talk-fleet's state-aware fan-out, the status-bar glyphs) parse the same option through the same =State::parse= / =priority()= logic, so ordering — "blocked wins" — is defined in exactly one place. There is deliberately no stored per-window or per-fleet rollup: tmux's own =#{P:}= / =#{W:}= format loops compute "does this window hold a blocked agent" live from per-pane options on every status refresh, which dropped hot-path hook latency from 21ms to 4ms versus the earlier stored-rollup design (ARCHITECTURE.org). Panes that predate the hooks fall back to a pane-title glyph heuristic instead of reporting Unknown. The protocol's defensive half: anything written into these options first passes =sanitize_format()=, because the values are later substituted into tmux format strings where raw =#{...}= would be re-expanded.
 
 * Crux
 
@@ -26,7 +26,7 @@ pub enum State {
 
 The event → state-write table (condensed from the architecture doc):
 
-#+begin_src text :file ARCHITECTURE.md :lines 24-33
+#+begin_src text :file ARCHITECTURE.org
 SessionStart      -> session-start  -> stamp session_id, rename window, state=idle
 UserPromptSubmit  -> prompt         -> state=busy; stamp @claude_task on first prompt only
 PreToolUse *      -> activity       -> stamp @claude_activity, state=busy
@@ -51,7 +51,7 @@ const WINDOW_GLYPH: &str = "#{?#{m:*needs-input*,#{P:#{@claude_state}|,#{@claude
 :SOURCES:
 :tmuxlib/src/lib.rs: sha256:14689e2aa7a744eb9389257e8c6fecaa54de92075e439153ea388e0be2453b36
 :cc-beacon/src/main.rs: sha256:b435e27e7e026755ae49f80569363b36a9f9088d528911ff1cc422fcaa296e3d
-:ARCHITECTURE.md: sha256:4a9eb88a4eba3e0401e5ba06523f4a0da218fa8313c4b550aabda2cb7f6e3c53
+:ARCHITECTURE.org: sha256:8d12de3b3c0b03a0c718dbe3703304a2c948f942618472b9e1b592fc22be6202
 :cc-attend/src/main.rs: sha256:d4f6313e33a67b7e97adabd208b87430169ae033655bbf512addd1f8aca9d252
 :cc-fleet/src/main.rs: sha256:2979890117282bd58b491d5de09432792efb4e0d904c0d83e8fd82a103c043f9
 :talk-fleet/src/main.rs: sha256:dbcd78b8844e0c3c2d7bc0dd65bff63efd675cfb019718212a89e0b589973643
