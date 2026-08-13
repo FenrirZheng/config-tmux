@@ -7,7 +7,7 @@
 //! ```
 //!
 //! No argument (or an unexpanded-empty `#{pane_id}`) falls back to `$TMUX_PANE`.
-//! See [ARCHITECTURE.md](../ARCHITECTURE.md) and
+//! See [ARCHITECTURE.org](../ARCHITECTURE.org) and
 //! [the scrollback-to-emacs plan](../../plans/to-emacs-scrollback.md).
 //!
 //! Two invariants:

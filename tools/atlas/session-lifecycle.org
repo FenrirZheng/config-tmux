@@ -72,7 +72,7 @@ PaneAction::Resume(uuid) => {
 * Sources
 :SOURCES:
 :cc-launch/src/main.rs: sha256:4fd1bc947775d4a554a8243f2cc338a41cf94cbdbcc590372103020727a33ef6
-:cc-layout/src/main.rs: sha256:613c0dddb0e914220e11352d60d280a7565f8a94dc7d7013cd2aedb674498163
+:cc-layout/src/main.rs: sha256:34d9efc29404301ce85280f7eda46319405b8018e2c582b3b3ec0bf0e7df6abb
 :tmuxlib/src/lib.rs: sha256:14689e2aa7a744eb9389257e8c6fecaa54de92075e439153ea388e0be2453b36
 :END:
 

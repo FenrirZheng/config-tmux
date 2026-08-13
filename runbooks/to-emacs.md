@@ -3,7 +3,7 @@
 Operational guide for installing, verifying, and troubleshooting the
 [`to-emacs`](../tools/to-emacs/src/main.rs) tool on a fresh or existing machine.
 Design rationale lives in [the design doc](../plans/to-emacs-scrollback.md);
-crate/binding conventions in [ARCHITECTURE.md](../tools/ARCHITECTURE.md).
+crate/binding conventions in [ARCHITECTURE.org](../tools/ARCHITECTURE.org).
 
 ## What it does
 

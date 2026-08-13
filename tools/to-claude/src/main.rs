@@ -10,7 +10,7 @@
 //!   to-claude capture <src_pane_id>  scrollback tail  -> `@<file> ` reference
 //! ```
 //!
-//! No argument means `--paste`. See [ARCHITECTURE.md](../ARCHITECTURE.md) and
+//! No argument means `--paste`. See [ARCHITECTURE.org](../ARCHITECTURE.org) and
 //! [the capture-rail plan](../../plans/to-claude-capture-rail.md).
 //!
 //! Two invariants, both load-bearing:

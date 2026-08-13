@@ -2,7 +2,7 @@
 //! pane options so every other tool in this workspace can see it.
 //!
 //! Wired into seven hook events in `~/.claude/settings.json`; see
-//! [ARCHITECTURE.md](../ARCHITECTURE.md) for the event table. This is the only
+//! [ARCHITECTURE.org](../ARCHITECTURE.org) for the event table. This is the only
 //! writer of `@claude_state` and friends.
 //!
 //! Two invariants, both load-bearing:

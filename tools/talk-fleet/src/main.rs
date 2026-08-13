@@ -2,7 +2,7 @@
 //! CLI.
 //!
 //! `talk`'s primitives (`send_text`, `ping`, `read-since`) are proven and stay
-//! untouched; see Collision 3 in [ARCHITECTURE.md](../ARCHITECTURE.md). This
+//! untouched; see Collision 3 in [ARCHITECTURE.org](../ARCHITECTURE.org). This
 //! binary adds the two things a supervisor actually wants — addressing workers
 //! by *role* instead of by `%N`, and fanning one task out to N of them — and
 //! shells out to `talk` for every keystroke that reaches a pane. There is no

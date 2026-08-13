@@ -1,7 +1,7 @@
 //! `cc-fleet` — fzf picker over every Claude Code pane on the server.
 //!
 //! Bound to `prefix S` inside `display-popup -E`; see
-//! [ARCHITECTURE.md](../ARCHITECTURE.md). Two modes:
+//! [ARCHITECTURE.org](../ARCHITECTURE.org). Two modes:
 //!
 //!   * `cc-fleet`      — build rows, run fzf, jump to the pick;
 //!   * `cc-fleet rows` — print the rows only, for debugging and for an fzf

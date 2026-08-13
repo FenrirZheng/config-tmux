@@ -2,6 +2,8 @@
 
 Implements the eight plans in [[../plans/][=plans/=]]. Those plans were written independently and collide in three places; this document is where the collisions are resolved. *Read this before editing any crate.*
 
+Agents orient from [[file:atlas/index.org][=atlas/index.org=]] first; this document is the human deep-dive. Where the two disagree, that is a validity report for the atlas — the source code adjudicates, and the wrong side gets fixed.
+
 ** What the plans got wrong
 
 Verified 2026-08-06 on this machine, against plan text that was marked =[未驗證]=:

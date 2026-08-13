@@ -70,7 +70,7 @@ fn sorted(panes: &[t::Pane], now: u64) -> Vec<&t::Pane> {
 * Sources
 :SOURCES:
 :cc-attend/src/main.rs: sha256:d4f6313e33a67b7e97adabd208b87430169ae033655bbf512addd1f8aca9d252
-:cc-fleet/src/main.rs: sha256:2979890117282bd58b491d5de09432792efb4e0d904c0d83e8fd82a103c043f9
+:cc-fleet/src/main.rs: sha256:c1a7f42f124a18186c105ebab852cd67a52eb850c1a5addb71765d13e7f08ab5
 :tmuxlib/src/lib.rs: sha256:14689e2aa7a744eb9389257e8c6fecaa54de92075e439153ea388e0be2453b36
 :END:
 

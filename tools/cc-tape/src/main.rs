@@ -12,7 +12,7 @@
 //!
 //! Two constraints worth stating up front:
 //!   * **the window's `pane-border-format` is never written here.** Six features
-//!     share one format string (see [ARCHITECTURE.md](../ARCHITECTURE.md)); the
+//!     share one format string (see [ARCHITECTURE.org](../ARCHITECTURE.org)); the
 //!     global one already renders `#{?pane_pipe,●REC,}`. A window-local format
 //!     would clobber the beacon/role/marked badges. Only `pane-border-status`
 //!     is touched, and only at the window level.

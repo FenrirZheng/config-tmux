@@ -58,7 +58,7 @@ fn attn(pane: &str) {
 
 * Sources
 :SOURCES:
-:cc-beacon/src/main.rs: sha256:b435e27e7e026755ae49f80569363b36a9f9088d528911ff1cc422fcaa296e3d
+:cc-beacon/src/main.rs: sha256:6e6bb9502485f7a2f9920541b922823f35896c13f1be72a80b020bb21a5b69ee
 :cc-beacon/Cargo.toml: sha256:e7e3ae98f9f9e036d72850a14eb4eeb187d20d9396a42b9f4fbbadbcd8f5bc0c
 :END:
 

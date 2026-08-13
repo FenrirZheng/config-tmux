@@ -4,7 +4,7 @@ Operational guide for installing, verifying, and troubleshooting the
 [`seek`](../tools/seek/src/main.rs) tool on a fresh or existing machine. Design
 rationale lives in [the tmux-seek map](../records/2026-08-09-1116-tmux-seek/tmux-seek.org)
 — read its **Current contract** section, which supersedes the tickets under it;
-crate/binding conventions in [ARCHITECTURE.md](../tools/ARCHITECTURE.md).
+crate/binding conventions in [ARCHITECTURE.org](../tools/ARCHITECTURE.org).
 
 ## What it does
 

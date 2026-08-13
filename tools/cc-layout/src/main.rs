@@ -15,7 +15,7 @@
 //! Restore never touches an existing session: a name collision restores into
 //! `<name>-restored` alongside it. Pane options are `cc-beacon`'s to write, so
 //! only `@claude_task` is re-applied here, and pane *titles* are never written
-//! at all — `talk ping` owns them (see [ARCHITECTURE.md](../ARCHITECTURE.md)).
+//! at all — `talk ping` owns them (see [ARCHITECTURE.org](../ARCHITECTURE.org)).
 
 use std::fmt;
 use std::fs::{self, File};

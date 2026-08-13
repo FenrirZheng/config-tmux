@@ -29,7 +29,7 @@ fn main() {
         t::message_literal(&format!("seek: {msg}"));
     }
     // Deliberately no non-zero exit on any path: a failing binding surfaces as
-    // a tmux error popup (tools/ARCHITECTURE.md, "Conventions").
+    // a tmux error popup (tools/ARCHITECTURE.org, "Conventions").
 }
 
 // ---------------------------------------------------------------------------
