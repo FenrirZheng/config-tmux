@@ -9,7 +9,7 @@
   WINDOWS      prefix c        new                    prefix ,   rename
                prefix n / p    next / previous        prefix w   pick from tree
 
-  COPY & GRAB  prefix C-t      copy mode (also prefix [ ; leave with q)
+  COPY & GRAB  prefix [        copy mode (leave with q)
                prefix Space    seek: search, jump, grab — type any text, Enter,
                                the cursor lands on the match (runbooks/seek.md)
                copy-mode w     grab the token under the cursor → clipboard
