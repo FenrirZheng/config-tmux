@@ -1,4 +1,4 @@
-# Runbook: seek — copy-mode grab word / line
+# Runbook: seek — `prefix Space`, search then grab word / line
 
 Operational guide for installing, verifying, and troubleshooting the
 [`seek`](../tools/seek/src/main.rs) tool on a fresh or existing machine. Design
@@ -6,15 +6,11 @@ rationale lives in [the tmux-seek map](../records/2026-08-09-1116-tmux-seek/tmux
 — read its **Current contract** section, which supersedes the tickets under it;
 crate/binding conventions in [ARCHITECTURE.org](../tools/ARCHITECTURE.org).
 
-> **2026-08-21**: `prefix Space` moved to [avy](avy.md) (label-based screen
-> jump). seek keeps the four copy-mode grab keys below; avy's jump lands in
-> copy-mode exactly where seek's keys pick up. To position by incremental
-> search instead, use `prefix [` then `C-r` / `C-s` (mode-keys emacs).
-
 ## What it does
 
-Position the copy-mode cursor on something — an avy jump, a search, or plain
-movement — and four copy-mode keys grab from there:
+`prefix Space` enters copy-mode and opens tmux's own incremental search prompt.
+Type any text, press Enter, and the cursor lands on the match. Then four
+copy-mode keys grab from there:
 
 | key | grabs | goes to |
 |---|---|---|

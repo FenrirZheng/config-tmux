@@ -1,9 +1,0 @@
-[package]
-name = "avy"
-version.workspace = true
-edition.workspace = true
-rust-version.workspace = true
-
-[dependencies]
-tmuxlib = { workspace = true }
-unicode-width = { workspace = true }

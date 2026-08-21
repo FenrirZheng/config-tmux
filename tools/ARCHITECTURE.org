@@ -72,9 +72,8 @@ Two ordering constraints, both load-bearing:
 | =talk-fleet=  | =role= / =bcast= / =collect=                   | talk-fleet-dispatch                                                             |
 | =cc-tape=     | =toggle= / =strip=                             | pane-tape                                                                       |
 | =seek=        | =word= / =line=, each with =--claude=          | [[../records/2026-08-09-1116-tmux-seek][records/2026-08-09-1116-tmux-seek]]    |
-| =avy=         | =launch= / =ui=                                | [[../records/2026-08-21-2310-tmux-avy][records/2026-08-21-2310-tmux-avy]]      |
 
-=seek= and =avy= are the crates whose design docs are not files in [[../plans/][=plans/=]]: their specifications are the records directories above — for seek, read that map's *Current contract* section, which supersedes the tickets under it; for avy, the directory holds the measured copy-mode cursor semantics (=measure-*.sh=) its jump math encodes, plus the headless verification suite.
+=seek= is the one crate whose design doc is not a file in [[../plans/][=plans/=]]: its specification is the wayfinder records directory above — read that map's *Current contract* section, which supersedes the tickets under it.
 
 ** Per-pane option contract
 
@@ -112,7 +111,7 @@ Anything derived from tool arguments passes through =sanitize_format()= before b
 | =prefix M-s=           | snapshot the layout                                                   | cc-layout |
 | =prefix m= / =M=       | mark / unmark the Claude inbox (stock tmux)                           | to-claude |
 | copy-mode =Y=          | send selection to Claude as one paste                                 | to-claude |
-| =prefix Space=         | avy-style label jump on the visible screen, lands in copy-mode        | avy       |
+| =prefix Space=         | copy-mode + incremental search prompt (pure tmux, no binary)          | seek      |
 | copy-mode =w= / =W=    | grab the token under the cursor → clipboard+buffer / +Claude          | seek      |
 | copy-mode =l= / =L=    | grab the logical line under the cursor → clipboard+buffer / +Claude   | seek      |
 

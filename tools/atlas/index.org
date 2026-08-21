@@ -11,7 +11,6 @@ Read the node before the source: each node explains one part of this workspace i
 
 - [[file:attention-navigation.org][attention navigation]] — ranks Claude panes by need and jumps or lists them, oldest-blocked first · covers: cc-attend/, cc-fleet/
 - [[file:cc-beacon.org][cc-beacon]] — only writer of Claude's tmux lifecycle state; 7 hook events → pane options + status glyphs · covers: cc-beacon/
-- [[file:screen-jump.org][screen jump (avy)]] — avy-goto-char-timer in a pane-covering popup; labels → measured copy-mode cursor replay · covers: avy/
 - [[file:session-lifecycle.org][session lifecycle]] — launches/resumes Claude sessions and snapshots/restores whole tmux teams across restarts · covers: cc-launch/, cc-layout/
 - [[file:talk-fleet.org][talk-fleet]] — addresses Claude panes by role name and broadcasts/collects a task across many · covers: talk-fleet/
 - [[file:text-piping.org][text piping]] — pipes pane text, scrollback, and copy-mode grabs into Claude, Emacs, or a tape · covers: to-claude/, to-emacs/, seek/, cc-tape/
@@ -26,4 +25,4 @@ Read the node before the source: each node explains one part of this workspace i
 
 * Coverage
 
-8 nodes over 16 source files — every crate in the workspace is covered by some node. Deliberately not explained: per-crate internals beyond each crux (cc-tape's strip mode, cc-launch's project/pair flows, cc-layout's TSV escaping), the bash =talk= primitives themselves (they live outside this workspace, in =~/.tmux=), and the cargo build system. Leaf subsystems (attention-navigation, screen-jump, session-lifecycle, talk-fleet, text-piping) have no inbound edges by design — nothing in the workspace depends on them; the link checker reports them as orphans, which is accepted and expected for a star-shaped codebase.
+7 nodes over 14 source files — every crate in the workspace is covered by some node. Deliberately not explained: per-crate internals beyond each crux (cc-tape's strip mode, cc-launch's project/pair flows, cc-layout's TSV escaping), the bash =talk= primitives themselves (they live outside this workspace, in =~/.tmux=), and the cargo build system. Leaf subsystems (attention-navigation, session-lifecycle, talk-fleet, text-piping) have no inbound edges by design — nothing in the workspace depends on them; the link checker reports them as orphans, which is accepted and expected for a star-shaped codebase.
