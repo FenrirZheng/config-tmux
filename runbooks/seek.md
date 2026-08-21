@@ -23,6 +23,11 @@ The pane **stays in copy-mode** after every grab, so the keys repeat across one
 search; leave with `q` or Escape. With no live search the four keys still work
 as plain grabbers on whatever the cursor is on.
 
+`prefix /` is the regex sibling (added 2026-08-22, bound in claude.conf next to
+this block): type a full regex, Enter, and the cursor lands on the match — the
+incremental search above is plain-text only (measured on 3.5a). The same four
+grab keys chain from wherever it lands; `n` / `N` step through further matches.
+
 This replaces tmux-thumbs, which could only jump to regexp-matched targets —
 paths, URLs, `file.ext:123`. `seek` jumps to *any* text you can type.
 
