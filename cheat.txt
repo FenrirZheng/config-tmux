@@ -10,8 +10,8 @@
                prefix n / p    next / previous        prefix w   pick from tree
 
   COPY & GRAB  prefix [        copy mode (leave with q)
-               prefix Space    seek: search, jump, grab — type any text, Enter,
-                               the cursor lands on the match (runbooks/seek.md)
+               prefix Space    avy: type chars, pause, press the label — the
+                               cursor jumps to the match (runbooks/avy.md)
                copy-mode w     grab the token under the cursor → clipboard
                copy-mode l     grab the whole logical line → clipboard
                                both repeat: the pane stays in copy-mode, and

@@ -51,7 +51,7 @@ const WINDOW_GLYPH: &str = "#{?#{m:*needs-input*,#{P:#{@claude_state}|,#{@claude
 :SOURCES:
 :tmuxlib/src/lib.rs: sha256:14689e2aa7a744eb9389257e8c6fecaa54de92075e439153ea388e0be2453b36
 :cc-beacon/src/main.rs: sha256:6e6bb9502485f7a2f9920541b922823f35896c13f1be72a80b020bb21a5b69ee
-:ARCHITECTURE.org: sha256:bdfdd9268172632054176e947bb81ae54986d6462f9ea88d200ec118fe21fe1f
+:ARCHITECTURE.org: sha256:949cbb8fa6631d8b42dbdec10ebb4ca71eccbf44246907c978147708d5beb1f3
 :cc-attend/src/main.rs: sha256:d4f6313e33a67b7e97adabd208b87430169ae033655bbf512addd1f8aca9d252
 :cc-fleet/src/main.rs: sha256:c1a7f42f124a18186c105ebab852cd67a52eb850c1a5addb71765d13e7f08ab5
 :talk-fleet/src/main.rs: sha256:769f04302901418a526bea4379b39b47fa68729637bf134e67fe5cce751a5a88

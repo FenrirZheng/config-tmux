@@ -1,0 +1,55 @@
+#+TITLE: screen jump (avy)
+#+ATLAS_TYPE: subsystem
+#+ATLAS_ID: screen-jump
+#+ATLAS_GENERATOR: atlas/1
+
+* Summary
+
+avy is avy-goto-char-timer for a tmux pane, bound at =prefix Space=: =avy launch= opens a borderless popup exactly covering the pane (the =popup_pane_left= / =popup_pane_top= format variables; panes freeze while a popup is open, so the snapshot cannot drift), and =avy ui= inside it re-renders a =capture-pane -e= snapshot, narrows matches as the user types (smart-case), shows single-key labels after a pause (=@avy-timeout=, =@avy-keys=), and finally drives the target pane's copy-mode cursor to the chosen match. The jump ends in copy-mode, which is the deliberate handoff to seek's grab keys (text-piping node) — jump, then grab. The hard part is cursor positioning: copy-mode has no goto-(x,y), so the tool replays measured primitives — =top-line=, =cursor-down= per screen row, =start-of-line= (which goes to the *logical* line start), then =cursor-right= per *character* plus exactly one phantom step per crossed wrap boundary. Those semantics were measured on tmux 3.5a (scripts in =records/2026-08-21-2310-tmux-avy/assets/scripts/=) and are pinned by the crate's unit tests (=steps_phantom_rule=, =locate_cjk_early_wrap=, =viewport_straddler_math=) and by the seven-case headless suite =verify-avy-headless.sh=, which drives =avy ui= in a throwaway server via the =CC_TMUX_SOCKET= seam. A viewport whose top row is the tail of a line wrapped from above is recovered via one extra full-history =-J= capture; if the two captures disagree, hits on that top line are excluded rather than jumped wrong (fail closed). Raw keyboard mode comes from shelling out to =stty= (VMIN/VTIME doubles as the avy timer) — no termios dependency, keeping the workspace at its two external deps.
+
+* Crux
+
+The whole wrap-compensation rule, resting on the measured phantom step:
+
+#+begin_src rust :file avy/src/main.rs :lines 99-105
+/// `cursor-right` steps from start-of-line to the char at `off`.
+/// Measured on tmux 3.5a: per-char stepping plus exactly one phantom
+/// end-of-row step at each wrap boundary crossed — i.e. off + wrapped-row
+/// index of the target char.
+fn steps_to(line: &str, width: usize, off: usize) -> usize {
+    off + locate(line, width, off).0
+}
+#+end_src
+
+The jump itself — the four measured primitives, batched into one tmux call:
+
+#+begin_src rust :file avy/src/main.rs :lines 207-222
+fn plan_jump(pane: &str, in_mode: bool, vrow: usize, steps: usize) -> Vec<Vec<String>> {
+    let mk = |xs: &[&str]| xs.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+    let mut batch = Vec::new();
+    if !in_mode {
+        batch.push(mk(&["copy-mode", "-t", pane]));
+    }
+    batch.push(mk(&["send-keys", "-t", pane, "-X", "top-line"]));
+    if vrow > 0 {
+        batch.push(mk(&["send-keys", "-t", pane, "-X", "-N", &vrow.to_string(), "cursor-down"]));
+    }
+    batch.push(mk(&["send-keys", "-t", pane, "-X", "start-of-line"]));
+    if steps > 0 {
+        batch.push(mk(&["send-keys", "-t", pane, "-X", "-N", &steps.to_string(), "cursor-right"]));
+    }
+    batch
+}
+#+end_src
+
+* Links
+
+- uses :: [[file:tmuxlib-lib.org][tmuxlib's single source file]] — =tmux()= / =tmux_batch()= plumbing, =display()= state reads, and =message_literal()= for every report (like seek, avy keeps pane text out of format contexts instead of sanitizing it)
+
+* Sources
+:SOURCES:
+:avy/src/main.rs: sha256:e5ee51b28d26d58a16c8816afbd65c8a50451b2ad65f6ea840dd2f91e4425811
+:avy/Cargo.toml: sha256:93de24b81053cf5275121b51f6d4261757f8133f3423ae0a7bcc8f0386349e1b
+:END:
+
+* Notes
