@@ -18,6 +18,8 @@ The tmux UI keeps its dark background but reads clearly: status bar, interactive
 
 * Decisions so far
 
+- [[#t1][Inventory tmux styling levers and tokyo-night's supplied axes]] — Axis checklist + current-value table landed; only git+path widgets live (six dormant), transparent bakes static opts opaque, cc-beacon caches 3 base keys needing unset-then-reload, 6 of 10 interactive-element styles are raw defaults
+
 * Not yet specified
 
 - Whether to open an Alacritty-palette exception (colors only, never opacity) — only if final acceptance finds overall text contrast still insufficient after tmux-layer work.
@@ -31,11 +33,10 @@ The tmux UI keeps its dark background but reads clearly: status bar, interactive
 
 * Tickets
 
-** TODO Inventory tmux styling levers and tokyo-night's supplied axes :research:
+** DONE Inventory tmux styling levers and tokyo-night's supplied axes :research:
 :PROPERTIES:
 :CUSTOM_ID: t1
 :ASSIGNEE: fenrir@72d1333c
-:CLAIMED_AT: 2026-08-23 22:44
 :BLOCKED_BY:
 :END:
 
@@ -48,6 +49,48 @@ Build the axis checklist any theme change must satisfy, from three sources:
 3. The tmux options that style each in-scope interactive element — copy-mode selection and search-match highlight (mode-style, copy-mode-*-style as applicable to tmux's installed version), message/prompt (message-style, message-command-style), popup (popup-style, popup-border-style), and pane default colors (window-style, window-active-style) — with their CURRENT effective values from the running server (tmux show-options, not guessed).
 
 Resolution: the checklist of axes a replacement theme must cover or coexist with, plus the current-value table. This is the yardstick t2's candidate survey scores against.
+
+*** Resolution
+
+tmux 3.5a. tokyo-night-tmux supplies: status-bar chrome (=status-style=, =status-left/right-length=, =status-left=), the git and path modules, window-naming formats (=window-status-format/-current-format=, =window-status-separator ""=), =pane-border-style=/=pane-active-border-style=, one unconditional =pane-border-status off= write at TPM-load time (=tokyo-night.tmux:27=), and 4 of the 10 interactive-element style options; the other 6 sit at tmux compiled-in defaults, untouched by any config layer (tmux-sensible and tmux-ace-window write no style options). Full mechanics behind the two subtle findings live in the kb atoms [[id:51c9a24b-e07b-479e-8b83-378025e2c549][tokyo-night-tmux widget gating and transparent split]] and [[id:2b82616c-920f-4d22-80f5-b35117637d08][cc-beacon install-bar theme cache and reset ordering]].
+
+**Premise correction (supersedes this session's earlier narration):** only the git and path widgets actually render today. Hostname, battery, music, netspeed, wb-git-status and datetime are wired into the format strings but self-gate on unset =@tokyo-night-tmux_show_*= options and produce empty output. The baseline for t2/t3 treats these six as OFF — the clock needs no removal, only "don't enable it on the new theme".
+
+**Axis checklist** (what a replacement theme must cover or coexist with):
+
+| axis | currently supplied by | collision risk on swap | notes |
+|---|---|---|---|
+| Status-bar theming (bg, lengths, left format) | tokyo-night | high — any theme rewrites these; last writer wins | =status-left-length 80=, =status-right-length 150= |
+| Git module | tokyo-night =git-status.sh=, gated by =show_git 1= | medium — parity check: branch + change counts | must be re-verified present after swap |
+| Path module | tokyo-night =path-widget.sh=, gated by =show_path 1= | medium | hardcodes =bg=#15161e=/=fg=blue= internally — not re-themeable via options (see widget-gating atom) |
+| Dormant widgets (hostname/battery/music/netspeed/wb-git/datetime) | wired but OFF | none — keep off | datetime already satisfies the no-clock scope rule |
+| Window naming / status formats | tokyo-night + cc-beacon glyph append | high — cc-beacon cache is theme-unaware | see cache atom: unset all three =@claude_bar_base_*=, THEN reload once |
+| =transparent= option | tokyo-night =themes.sh= | mismatch found | per-invocation widgets honor it; static options baked opaque =#1A1B26= at TPM load. [判斷] cause: =run tpm= precedes the =@tokyo-night-tmux_*= lines in tmux.conf; falsify with one fresh reload |
+| =pane-border-status off= write | tokyo-night at TPM load | high if load order breaks | claude.conf must stay the literal last line of tmux.conf |
+| claude.conf badge + fleet roster | claude.conf + cc-beacon | high | cc-beacon =install-bar= touches four option families (three cached formats + per-window =pane-border-status=) |
+| Interactive elements | 4 theme-set, 6 raw defaults | medium | contrast work here is new work regardless of theme picked |
+
+**claude.conf option enumeration** (sets: =pane-border-status top= + a =window-layout-changed= hook re-writing it per-window; =pane-border-format= (6-feature badge); =monitor-bell on= / =visual-bell off= / =bell-action any=; reads inside formats: =@claude_state=, =@claude_role=, =@claude_task=, =@claude_activity=, =pane_marked=, =pane_pipe=. cc-beacon additionally owns =@claude_bar_base_wsf/_wscf/_sr= and appends to =window-status-format=, =window-status-current-format=, =status-right=, plus per-window =pane-border-status= via =apply_border_rule_to_existing_windows()=.)
+
+**Current interactive-element values** (=tmux show-options -g=, verified 2026-08-23):
+
+| option | value | set by |
+|---|---|---|
+| =mode-style= | =fg=#41a6b5,bg=#2A2F41= | tokyo-night |
+| =message-style= | =bg=#7aa2f7,fg=#2A2F41= | tokyo-night |
+| =message-command-style= | =fg=#7aa2f7,bg=#2A2F41= | tokyo-night |
+| =popup-border-style= | =fg=#7aa2f7= | tokyo-night |
+| =popup-style= | default | tmux default |
+| =window-style= / =window-active-style= | default | tmux default |
+| =copy-mode-match-style= | =bg=cyan,fg=black= | tmux default |
+| =copy-mode-current-match-style= | =bg=magenta,fg=black= | tmux default |
+| =copy-mode-mark-style= | =bg=red,fg=black= | tmux default |
+| =status-style= | =bg=#1A1B26= | tokyo-night (opaque despite =transparent 1=) |
+| =pane-border-style= / =pane-active-border-style= | =fg=#2A2F41= / =fg=#7aa2f7= | tokyo-night |
+
+Adjacent surface, out of current scope: =display-menu= styles (=menu-style=/=menu-border-style=/=menu-selected-style=, used by claude.conf's =bind C= menu) are also raw defaults — flag only if scope expands.
+
+- review: 1 blocker (claude.conf option enumeration missing) + 2 should-fix (interactive-element count corrected to 4-of-10 theme-set; cache-reset ordering caveat added) addressed in one revise round, merging the reviewer's own file:line-verified facts; all 4 spot-checked load-bearing claims CONFIRMED against ground truth.
 
 ** TODO Select dark high-contrast theme candidates for live try-on :research:
 :PROPERTIES:
