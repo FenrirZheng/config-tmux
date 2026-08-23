@@ -47,3 +47,18 @@ Build the axis checklist any theme change must satisfy, from three sources:
 3. The tmux options that style each in-scope interactive element — copy-mode selection and search-match highlight (mode-style, copy-mode-*-style as applicable to tmux's installed version), message/prompt (message-style, message-command-style), popup (popup-style, popup-border-style), and pane default colors (window-style, window-active-style) — with their CURRENT effective values from the running server (tmux show-options, not guessed).
 
 Resolution: the checklist of axes a replacement theme must cover or coexist with, plus the current-value table. This is the yardstick t2's candidate survey scores against.
+
+** TODO Select dark high-contrast theme candidates for live try-on :research:
+:PROPERTIES:
+:CUSTOM_ID: t2
+:ASSIGNEE:
+:BLOCKED_BY: t1
+:END:
+
+*** Question
+
+Using t1's axis checklist as the yardstick, survey maintained dark tmux themes and pick 2-3 candidates for live try-on. A tuned tokyo-night (transparent off, brighter variant/options, targeted overrides) counts as one candidate. Survey pool should at least consider: catppuccin/tmux, rose-pine/tmux, nightfox, dracula/tmux, gruvbox-material ports — but the pool is open; contrast and legibility outrank hue (user has no color-family preference).
+
+Per candidate, record: how it scores on every t1 axis (git module, path module, or clean coexistence with custom status modules; interactive-element styling; what it writes at TPM load that could collide with claude.conf); install method (TPM line + .gitignore line per repo convention); the exact config block for a try-on; and expected gaps that would need overrides.
+
+Resolution: the 2-3 candidate shortlist with the per-axis scorecard and ready-to-apply try-on config for each. This is what t3's live try-on applies.
