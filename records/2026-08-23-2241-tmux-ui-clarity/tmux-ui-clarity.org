@@ -30,3 +30,20 @@ The tmux UI keeps its dark background but reads clearly: status bar, interactive
 - Clock/date status-bar module — user does not want it.
 
 * Tickets
+
+** TODO Inventory tmux styling levers and tokyo-night's supplied axes :research:
+:PROPERTIES:
+:CUSTOM_ID: t1
+:ASSIGNEE:
+:BLOCKED_BY:
+:END:
+
+*** Question
+
+Build the axis checklist any theme change must satisfy, from three sources:
+
+1. What tokyo-night-tmux currently supplies: status-bar theming and modules (git, path), window naming, the transparent option's effect, the pane-border-status off write during TPM load, and whether it styles any interactive element (mode-style, message-style, popups) at all.
+2. What claude.conf depends on: the last-line load-order contract (only a later run-shell survives tokyo-night's TPM-time writes), the pane-border badge format, the fleet roster in the status bar — enumerate exactly which tmux options claude.conf sets/reads so a theme swap can be checked for collisions option by option.
+3. The tmux options that style each in-scope interactive element — copy-mode selection and search-match highlight (mode-style, copy-mode-*-style as applicable to tmux's installed version), message/prompt (message-style, message-command-style), popup (popup-style, popup-border-style), and pane default colors (window-style, window-active-style) — with their CURRENT effective values from the running server (tmux show-options, not guessed).
+
+Resolution: the checklist of axes a replacement theme must cover or coexist with, plus the current-value table. This is the yardstick t2's candidate survey scores against.
