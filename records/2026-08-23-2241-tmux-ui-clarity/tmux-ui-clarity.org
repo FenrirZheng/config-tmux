@@ -1,0 +1,32 @@
+#+TITLE: tmux UI clarity — dark base, higher contrast and saturation
+#+TODO: TODO | DONE CANCELLED
+#+WF_FORMAT: 1
+
+* Destination
+
+The tmux UI keeps its dark background but reads clearly: status bar, interactive elements (copy-mode highlight, message/prompt, popup), and pane default colors have visibly higher contrast and saturation, with git status + current path + fleet roster preserved on the status bar. Changes are applied in place and accepted by the user's eyeball — this map carries execution (user override of plan-don't-do, grill 2026-08-23).
+
+* Notes
+
+- Working repo: =/home/fenrir/.tmux= @ =main= (single worktree; working tree is the tmux config repo, remote FenrirZheng/config-tmux).
+- Grill snapshot with the full shared understanding: [[file:grill/2026-08-23-2241-tmux-ui-clarity.org]].
+- Scope: tmux layer only. Alacritty palette/opacity untouched; the ANSI palette of pane text is Alacritty's, so "overall text contrast" is bounded by tmux levers. If final acceptance still finds it insufficient, the user decides then about an Alacritty-palette exception (colors only, never opacity) — held in fog until then.
+- Theme route: open to replacing tokyo-night-tmux with another dark theme; tuned tokyo-night is itself a candidate. Candidates chosen by live try-on in the user's real tmux. No color-family preference — contrast and legibility outrank hue.
+- Swap discipline (global CLAUDE.md: measure every axis on swap): tokyo-night currently supplies status-bar theming, git + path modules, window naming, the =transparent= option, and a =pane-border-status off= write during TPM load that claude.conf's last-line load order exists to override. Any replacement must be re-verified on every one of those axes, plus coexistence with claude.conf's pane-border badge and fleet roster.
+- Pane border badge and fleet roster are custom (claude.conf) — must survive any theme change. Pane border appearance itself is fine as-is: not a target.
+- tmux config conventions: reload with =tmux source-file ~/.tmux.conf=; TPM plugins are untracked and per-plugin gitignored (adding a plugin means adding its =.gitignore= line); =source-file= does not unbind stale bindings.
+
+* Decisions so far
+
+* Not yet specified
+
+- Whether to open an Alacritty-palette exception (colors only, never opacity) — only if final acceptance finds overall text contrast still insufficient after tmux-layer work.
+
+* Out of scope
+
+- Light (bright-background) themes — user chose dark-base with higher contrast/saturation.
+- Alacritty opacity/transparency changes — never in scope, even under the palette exception.
+- Pane border redesign — current border and badge are fine; only coexistence must be preserved.
+- Clock/date status-bar module — user does not want it.
+
+* Tickets

@@ -1,0 +1,27 @@
+#+TITLE: tmux-ui-clarity — lite charting grill
+
+Standalone lite-charting grill for the tmux-ui-clarity effort (destination + breadth sweep in one session). Map: [[file:../tmux-ui-clarity.org]].
+
+* Decisions
+
+- Destination: keep a dark background; raise clarity by increasing contrast and saturation of tmux-drawn elements, applied in place ("直接改到位") — the map carries execution, not a handoff checklist.
+- Pain points in scope: status bar, overall text contrast (to the extent tmux controls it), interactive elements (copy-mode highlight, message/prompt, popup). Pane border is explicitly fine as-is — untouched.
+- Scope: tmux layer only. Alacritty (palette and opacity) stays untouched; ANSI palette of pane text is Alacritty's, so overall-text-contrast work is bounded by tmux's levers (status bar opacity/colors, window-style bg/fg, interactive-element styles).
+- Deferred decision: if final acceptance still finds overall text contrast insufficient, the user decides then whether to open an Alacritty-palette exception (colors only, never opacity). User (2026-08-23): 「先做 tmux 層、驗收再說」.
+- Theme route: open to replacing tokyo-night-tmux with another dark theme; a tuned tokyo-night counts as one candidate. Candidate choice by live try-on in the user's real tmux, 2–3 candidates, picked on sight.
+- Color family: no preference — contrast and legibility outrank hue. User (2026-08-23): 「無特別偏好」.
+- Status bar information set to preserve: git status, current path, fleet roster (custom claude.conf element). Clock/date not wanted.
+- Component-swap discipline applies: before any theme swap, enumerate every axis tokyo-night currently serves (status modules, window naming, transparent option, pane-border-status behavior claude.conf's load order depends on) and re-verify all of them under the replacement.
+- Acceptance: user eyeball — 目測滿意即通過.
+
+* Rejected alternatives
+
+- Light (bright-background) theme — user chose dark-base with higher contrast/saturation instead.
+- Including Alacritty in scope now — deferred behind acceptance; tmux-first.
+- Choosing the theme from README screenshots or a comparison doc — live try-on chosen; screenshots are authors' tuned demos.
+- Producing a decision + execution checklist handoff — user wants changes applied in place.
+
+* Open items
+
+- Whether tmux-layer levers alone satisfy the "overall text contrast" pain point — resolved at final acceptance; if not, the Alacritty-palette exception question graduates from fog.
+- Which tmux options actually style each interactive element (mode-style, message-style, popup styles) and what tokyo-night currently sets — research ticket work.
