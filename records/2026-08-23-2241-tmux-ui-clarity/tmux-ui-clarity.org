@@ -62,3 +62,14 @@ Using t1's axis checklist as the yardstick, survey maintained dark tmux themes a
 Per candidate, record: how it scores on every t1 axis (git module, path module, or clean coexistence with custom status modules; interactive-element styling; what it writes at TPM load that could collide with claude.conf); install method (TPM line + .gitignore line per repo convention); the exact config block for a try-on; and expected gaps that would need overrides.
 
 Resolution: the 2-3 candidate shortlist with the per-axis scorecard and ready-to-apply try-on config for each. This is what t3's live try-on applies.
+
+** TODO Live try-on of theme candidates and pick :prototype:
+:PROPERTIES:
+:CUSTOM_ID: t3
+:ASSIGNEE:
+:BLOCKED_BY: t2
+:END:
+
+*** Question
+
+Apply t2's candidates one at a time in the user's real tmux (theme swap is live via source-file; zero-cost rollback), with git status + current path + fleet roster visible during each try-on so the preserved information set is judged in place. The user picks on sight — the pick is theirs, not the agent's. Record the chosen theme and what the user said about why (verbatim zh-TW quote for the load-bearing preference), plus any visible gaps noted during try-on that t4 must fix with overrides.
