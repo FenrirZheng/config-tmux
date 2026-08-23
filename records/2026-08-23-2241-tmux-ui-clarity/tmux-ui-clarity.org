@@ -34,7 +34,8 @@ The tmux UI keeps its dark background but reads clearly: status bar, interactive
 ** TODO Inventory tmux styling levers and tokyo-night's supplied axes :research:
 :PROPERTIES:
 :CUSTOM_ID: t1
-:ASSIGNEE:
+:ASSIGNEE: fenrir@72d1333c
+:CLAIMED_AT: 2026-08-23 22:44
 :BLOCKED_BY:
 :END:
 
