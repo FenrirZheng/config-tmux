@@ -73,3 +73,16 @@ Resolution: the 2-3 candidate shortlist with the per-axis scorecard and ready-to
 *** Question
 
 Apply t2's candidates one at a time in the user's real tmux (theme swap is live via source-file; zero-cost rollback), with git status + current path + fleet roster visible during each try-on so the preserved information set is judged in place. The user picks on sight — the pick is theirs, not the agent's. Record the chosen theme and what the user said about why (verbatim zh-TW quote for the load-bearing preference), plus any visible gaps noted during try-on that t4 must fix with overrides.
+
+** TODO Apply chosen theme with overrides and final acceptance :task:
+:PROPERTIES:
+:CUSTOM_ID: t4
+:ASSIGNEE:
+:BLOCKED_BY: t3
+:END:
+
+*** Question
+
+Execute the pick in place (this map carries execution): wire the chosen theme permanently in tmux.conf (TPM line + per-plugin .gitignore line per repo convention, or tokyo-night option changes if the tuned incumbent won); write the interactive-element overrides (mode/message/popup/window styles) the try-on showed were needed; re-verify every t1 axis under the final config — especially claude.conf's load-order contract, pane-border badge, and fleet roster; reload and commit.
+
+Final acceptance is the user's eyeball, including the overall-text-contrast judgment: if contrast is still insufficient, that does NOT block closing this ticket — it graduates the fog line about the Alacritty-palette exception (colors only, never opacity) into a ticket for the user to decide. Resolution records what was applied, the axis re-verification results, and the acceptance verdict.
