@@ -1,0 +1,34 @@
+:PROPERTIES:
+:ID:       51c9a24b-e07b-479e-8b83-378025e2c549
+:END:
+#+TITLE: tokyo-night-tmux widget gating and transparent split
+#+KB_FORMAT: atomic-kb/1
+
+tokyo-night-tmux wires all seven status-right/left widget scripts into its format strings unconditionally, but each widget self-gates at runtime on its own =@tokyo-night-tmux_show_*= option and exits empty when unset — so "in the format string" is not "rendered". The =transparent= option splits the same way: per-invocation widgets honor it live, but statically-set options bake the background once at TPM-load time. Verified 2026-08-23 on tmux 3.5a against =~/.tmux/plugins/tokyo-night-tmux= and the running server.
+
+* Notes
+
+** Widget gating
+
+Every widget script begins with a gate of this shape (e.g. =datetime-widget.sh:4=, =battery-widget.sh:4=, =hostname-widget.sh:9=, =netspeed.sh:9=, =music-tmux-statusbar.sh:3=, =wb-git-status.sh:3=):
+
+#+begin_src bash
+# pattern: exit silently unless the show-option is exactly 1
+SHOW_X=$(tmux show-option -gv @tokyo-night-tmux_show_X 2>/dev/null)
+[[ $SHOW_X -ne 1 ]] && exit 0
+#+end_src
+
+On this machine only =@tokyo-night-tmux_show_git 1= and =@tokyo-night-tmux_show_path 1= are set, so only =git-status.sh= and =path-widget.sh= render; hostname, battery, music, netspeed, wb-git-status and datetime are wired-but-dormant. Querying their options errors "invalid option" — truly unset, not set-to-0. Any theme-swap baseline must treat these six as OFF, not as content to suppress.
+
+** The transparent split
+
+=src/themes.sh:104-106= rewrites =THEME[background]= to the literal string =default= only when =@tokyo-night-tmux_transparent= reads =1= *at the moment themes.sh is sourced*. Two consumer classes then diverge:
+
+- Widget scripts (=path-widget.sh=, =git-status.sh=, …) re-source =themes.sh= on every status refresh → they reflect the live option (=bg=default= fragments confirmed in output).
+- The entry script =tokyo-night.tmux= writes =status-style=, window-status formats, pane border styles, message styles and =popup-border-style= exactly once at TPM run-shell time. Measured: =status-style= is =bg=#1A1B26= (opaque) despite =transparent 1= being set in tmux.conf.
+
+[判斷] Likely mechanism for the opaque bake: in =~/.tmux/tmux.conf= the =run '~/.tmux/plugins/tpm/tpm'= line sits *above* the =set -g @tokyo-night-tmux_*= lines, so the option may not read =1= when the entry script runs. Falsifiable in one fresh reload: re-query =status-style= after =tmux source-file ~/.tmux.conf=.
+
+** Gotcha: path widget hardcodes colors
+
+=path-widget.sh:12= pins =RESET="#[fg=brightwhite,bg=#15161e,...]"= and line 23 emits =fg=blue,bg=default= — no theme option controls either. A brightness/contrast pass over the status bar cannot re-theme the path module through options alone.
