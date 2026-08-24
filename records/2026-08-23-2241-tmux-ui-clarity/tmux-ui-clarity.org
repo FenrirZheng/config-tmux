@@ -24,8 +24,6 @@ The tmux UI keeps its dark background but reads clearly: status bar, interactive
 
 * Not yet specified
 
-- Whether to open an Alacritty-palette exception (colors only, never opacity) — only if final acceptance finds overall text contrast still insufficient after tmux-layer work.
-
 * Out of scope
 
 - Light (bright-background) themes — user chose dark-base with higher contrast/saturation.
