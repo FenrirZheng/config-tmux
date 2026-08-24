@@ -214,7 +214,8 @@ Apply t2's candidates one at a time in the user's real tmux (theme swap is live 
 ** TODO Apply chosen theme with overrides and final acceptance :task:
 :PROPERTIES:
 :CUSTOM_ID: t4
-:ASSIGNEE:
+:ASSIGNEE: fenrir@72d1333c
+:CLAIMED_AT: 2026-08-24 12:47
 :BLOCKED_BY: t3
 :END:
 
