@@ -1,0 +1,23 @@
+:PROPERTIES:
+:ID:       239a49e5-9b6d-4c05-8585-30d314ace9e7
+:END:
+#+TITLE: tmux set -agF bakes format expansion at set time
+#+KB_FORMAT: atomic-kb/1
+
+When composing a status option from module variables like =#{E:@catppuccin_status_directory}=, append with =-ag= (no =F=). The =F= flag expands the format once at =set= time and stores the *result*, so the =#{E:...}= indirection is consumed immediately: the directory freezes to the then-active pane's path and any embedded =#()= command (e.g. a gitmux segment) is lost. With plain =-ag= the =#{E:...}= string stays literal in the option and the status line re-expands it on every refresh. Measured 2026-08-24 during the tmux-ui-clarity theme swap.
+
+* Notes
+
+Working form (=~/.tmux/claude.conf=, theme layer):
+
+#+begin_src tmux
+# -ag WITHOUT F — the #{E:...} must stay literal in the option so the
+# status line expands it on every refresh. -agF bakes the module string once.
+set -g  status-right ""
+set -ag status-right "#{E:@catppuccin_status_gitmux}"
+set -ag status-right "#{E:@catppuccin_status_directory}"
+#+end_src
+
+Failure signature with =-agF=: the path segment shows one fixed directory regardless of the active pane, and the gitmux segment never appears (its =#()= was evaluated once and its output — or nothing — was baked in).
+
+Rule of thumb: =F= is for when you *want* a snapshot (e.g. caching a computed value into a user option); never for status-line composition that must stay live.
