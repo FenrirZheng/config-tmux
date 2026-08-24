@@ -1,0 +1,147 @@
+# Draft Resolution for t2 (researcher output, pre-review)
+
+**Shortlist: tuned tokyo-night, catppuccin/tmux, dracula/tmux.**
+
+Tuned tokyo-night stays in as the low-risk incumbent — it already satisfies every collision axis from t1 (last-line load order, cc-beacon's three-key cache, no `pane-border-status` fight once `claude.conf` is last) because that's the config running today; the only changes are turning `transparent` off and adding hex overrides for the 6 raw-default interactive elements. **`transparent 0` is not a no-op.** Per the kb atom the option is inert only for the *statically*-set options — `status-style` was already baked opaque `#1A1B26` at TPM load despite `transparent 1` — while the per-invocation widget scripts re-source `themes.sh` on every refresh and therefore honor it live: the git and path cells emit `bg=default` and show Alacritty's translucent background *today*. Setting it to 0 makes those cells opaque, and the proposed `window-style`/`window-active-style` overrides go much further (see gaps).
+
+catppuccin/tmux (flavor `mocha`) is the strongest maintained alternative: it covers 5 of the 10 interactive-element options out of the box (vs tokyo-night's 4), including `popup-style`/`popup-border-style` which tokyo-night never touches, ships a first-class transparent mode, writes zero `pane-border-status`, and had a tagged release 4.5 months ago. Caveat on that 5: one of them, `mode-style`, is written **bg-only** (`catppuccin_tmux.conf:224`, `bg=#{@thm_surface_0},bold` — no `fg`), so copy-mode selection foreground falls through to the terminal default; that is a *downgrade* from tokyo-night's fg+bg `mode-style`, and it is the same asymmetry that counts against rose-pine below. Call it 4 full + 1 partial. It is also the **contrast leader of the survey**: 12.14:1 status text (`@thm_fg` `#cdd6f4` on `@thm_mantle` `#181825`).
+
+dracula/tmux earns its shortlist slot on **module parity plus maintenance, not on contrast**. It is the only surveyed alternative that ships *both* halves of tokyo-night's widget parity natively: a git module (`scripts/git.sh` — branch + A/M/U/D change counts, pure bash+git, no external binary — where catppuccin's git module shells out to `gitmux`, which is not installed here) and a `~`-abbreviated full-path cwd module (`scripts/cwd.sh`, with truncation options — where catppuccin and rose-pine offer basename only). It was last touched 2 days ago (2026-08-22), by far the most active repo surveyed. Its status-bar text contrast under this draft's own try-on options is 8.59:1 (white `#f8f8f2` on gray `#44475a`) — strong and comfortably above AA, but **not** the survey's best; catppuccin's 12.14:1 is. And it sets exactly **1** of the 10 interactive-element options (`message-style`, `dracula.sh:174` — the same white-on-gray pair, so also 8.59:1), leaving 9 overrides as new work.
+
+**Does the 3-candidate shortlist survive that correction?** Yes, but for a different reason than first written. Dracula was originally shortlisted for "best raw contrast"; that claim was wrong (13.36:1 is the white-on-`#282a36` powerline-separator pairing, which the `@dracula-show-powerline false` try-on below never renders as status-bar background). What remains is still unique in the pool and still load-bearing against t1's axis checklist: dracula is the **only** candidate that clears the git-module *and* path-module parity bars with zero external dependencies and zero custom `status-right` composition, and it is the most actively maintained. Catppuccin needs an absent binary for git parity and a custom `@catppuccin_directory_text` for path parity; every cut candidate fails one or both outright. So the composition (tuned tokyo-night, catppuccin, dracula) stands — with the honest trade restated as "native parity + freshest upstream, at the cost of 9 hand-written interactive-element overrides and second-place base contrast."
+
+Cut from the pool:
+- **rose-pine/tmux** — cut primarily on **contrast**: its own default status-bar text contrast is 3.38:1 — below WCAG AA for normal text, i.e. it fails the entire point of this effort by its own defaults (`rose-pine-tmux/rose-pine.tmux:113`, `thm_pine` `#31748f` fg on `thm_base` `#191724` bg). Secondary: only 3/10 interactive elements (`mode-style` :478, `message-style` :125, `message-command-style` :126), no git module, and its directory module is **basename only and opt-in** — `@rose_pine_directory "on"` appends `#{b:pane_current_path}` to the right column (`rose-pine.tmux:323`), with `@rose_pine_show_pane_directory` variants for the window-status slots (`:326,:329`) — i.e. exactly catppuccin's narrowness, not tokyo-night's `~`-relative full path. Its `mode-style` is bg-only (`:478`, `bg=${thm_hl_med}`), but so is catppuccin's, so that asymmetry is **not** part of the cut rationale — it is a shared caveat, recorded on both.
+- **nightfox (EdenEast/nightfox.nvim tmux exports)** — not TPM-installable as a single variant: TPM's plugin loader only globs the plugin's **top-level** directory for `*.tmux` files (non-recursive — `~/.tmux/plugins/tpm/scripts/source_plugins.sh:17`, `local plugin_tmux_files="$plugin_path*.tmux"`), but every nightfox variant script lives nested at `extra/<variant>/<variant>.tmux` (e.g. `nightfox-nvim/extra/carbonfox/carbonfox.tmux`) and none of them carry the executable bit (`ls -la` showed `-rw-rw-r--`, no `+x`) — `set -g @plugin 'edeneast/nightfox.nvim'` would source **nothing**. Using it means bypassing the repo's `@plugin`-line convention entirely (manual `chmod +x` + a hand-written `run-shell` pointing at a nested path), plus its export hardcodes a date/time module the map explicitly doesn't want and needs `tmux-prefix-highlight` for `#{prefix_highlight}` to not render empty.
+- **z3z1ma/tmux-gruvbox** — no git module in `status/` at all, and the repo is stale: last commit `2024-01-17` (~2.5 years old, `z3z1ma-gruvbox` `git log -1`).
+- **egel/tmux-gruvbox** — 2/10 interactive elements (`message-style` at `src/theme_gruvbox_dark.sh:40`, `message-command-style` at `:43`; no `mode-style`, no `popup-*`, no `copy-mode-*`, no `window-style`/`window-active-style` anywhere in `src/*.sh`), no git/path module, ships an unwanted date/time+hostname `status-right` by default (`src/gruvbox-main.sh:27-29`), and is 15 months stale (`2025-05-29`). Note that this is *not* the weakest coverage surveyed — dracula's 1/10 is — but egel has none of dracula's compensating strengths (no native modules, stale upstream), so coverage was never the deciding axis for it.
+
+## Per-axis scorecard
+
+| axis | tuned tokyo-night | catppuccin/tmux (mocha) | dracula/tmux |
+|---|---|---|---|
+| Status-bar theming | incumbent: `status-left-length 80`/`status-right-length 150`, `status-style bg=#1A1B26` (`tokyo-night.tmux:15-16,29`) | no `status-left`/`status-right` writes at all — user composes from `@catppuccin_status_*` module vars (`catppuccin_tmux.conf` has none; README:199-207); `status-style` set from `@thm_mantle` (`catppuccin_tmux.conf:3-5`) | unconditionally rewrites `status-left`/`status-right`/lengths every load (`dracula.sh:162-192`) |
+| Git module | built-in `git-status.sh`, gated `show_git 1`, branch+? (t1) | needs external `gitmux` binary (not installed — verified `which gitmux` → not found); `status/gitmux.conf:7` shells out to it | built-in `git.sh`, branch + A/M/U/D counts, pure git/bash (`scripts/git.sh:16-50` getChanges, `:143-182` getMessage); must add `git` to `@dracula-plugins` (default list is `"battery network weather"`, `dracula.sh:54`) — **the only surveyed alternative with built-in git parity** |
+| Path module | built-in `path-widget.sh`, `~`-relative or full via `@tokyo-night-tmux_path_format` (`path-widget.sh:11,19-20`) | `status/directory.conf:6` shows **basename only** (`#{b:pane_current_path}`) — narrower than tokyo-night's default | built-in `cwd.sh`, `~`-abbreviated full path with truncation options (`scripts/cwd.sh:21-47`); must add `cwd` to `@dracula-plugins` |
+| Dormant widgets | N/A — none enabled | N/A | N/A |
+| Window naming + cc-beacon coexistence | unaffected — same mechanism as today, cc-beacon 3-key cache/reload discipline still required | no `pane-border-status` write at all (grep across repo: none) — cleanest coexistence surveyed; still needs the same cc-beacon 3-key unset-then-reload-once for `window-status-format`/`_current-format`/`status-right` | no `pane-border-status` write; `status-right`/`window-status-format` rebuilt unconditionally at TPM load (same "cache after theme's own write" ordering as tokyo-night today) |
+| Transparent handling | disabled in the try-on — but that *removes* live translucency the widgets have today; see gaps below | first-class: `@catppuccin_status_background "none"` (`catppuccin_tmux.conf:8-10`) | `@dracula-transparent-powerline-bg` is a **whole-status-bar** transparency toggle despite the name: setting it makes `bg_color="default"` (`dracula.sh:79-80`), and `bg_color` is what `status-style` (`:177`), `window-status-format` (`:404`) and the powerline branch of `window-status-current-format` (`:399`) all use. Not powerline-only |
+| `pane-border-status` write | incumbent's known `off` write at TPM load — unaffected, load-order contract already handles it | none written — no collision risk | none written — no collision risk |
+| claude.conf badge+roster coexistence | unaffected (today's baseline) | works: claude.conf/cc-beacon run after catppuccin's async plugin load, same load-order mechanism as tokyo-night today | works, same mechanism; note `status-right` is *entirely* rebuilt by dracula at load, so the cc-beacon base-cache must capture dracula's post-load value, not a pre-load one (same requirement as today) |
+| Interactive elements (of 10) | 4 today (all fg+bg) → target 10 after tuning (below) | 5/10 native, but **4 full + 1 partial**: `message-style`, `message-command-style` (`catppuccin_tmux.conf:39-40`), `popup-style`, `popup-border-style` (`:128-129`, gated `#{>=:#{version},3.4}`, true on 3.5a) are fg+bg; `mode-style` (`:224`) is **bg-only** (`bg=#{@thm_surface_0},bold`, no `fg`) — same caveat as rose-pine's `:478`, and a regression against tokyo-night's fg+bg `mode-style` | **1/10** — `message-style` only (`dracula.sh:174`, `bg=${gray},fg=${white},fill=${gray}`). Grep of `dracula.sh` + all `scripts/*.sh` finds no `mode-style` (only `clock-mode-style` :156,:158), no `popup-*`, no `copy-mode-*`, no `window-style`/`window-active-style` |
+| Contrast judgment | current mode-style only 4.65:1 (`#41a6b5`/`#2A2F41`); status-style 8.10:1; proposed tuned overrides raise copy-mode pairs to 6.5–8.6:1 (below) | **survey contrast leader**: status text 12.14:1 (`#cdd6f4` on `#181825`), popup text 11.34:1; **but** default message-style only 3.28:1 (`thm_teal` `#94e2d5` on `overlay_0` `#6c7086`) — below AA; default `popup-border-style` only 1.80:1 (`surface_1`/`thm_bg`) — near-invisible border; and `mode-style`'s bg-only write leaves copy-mode selection fg at the terminal default, i.e. uncontrolled, exactly like rose-pine's | status text **8.59:1**, message 8.59:1 — the *same* white-`#f8f8f2`-on-gray-`#44475a` pair, since with `@dracula-show-powerline false` (the try-on below) `bg_color=${gray}` (`dracula.sh:91`) feeds `status-style` (`:177`). Above AA but **second to catppuccin's 12.14:1**. (13.36:1 is white on `dark_gray` `#282a36` — the powerline-separator background at `:182,:184`, never rendered as status-bar background in this try-on.) Every copy-mode/popup pairing is unstyled (terminal default), so contrast there is unverified/uncontrolled |
+| Maintenance | incumbent, already deployed | last tag `v2.3.0`, 2026-04-08; frequent releases (CHANGELOG) | most recent of all surveyed: last commit 2026-08-22 (2 days before this survey) |
+
+## Try-on config blocks
+
+**1. Tuned tokyo-night** (no plugin swap — same `janoamaral/tokyo-night-tmux` already in tmux.conf and `.gitignore`)
+
+In `tmux.conf`, change:
+```
+set -g @tokyo-night-tmux_transparent 0   # was 1
+```
+What `1` → `0` actually changes (kb atom's static/live split): the *statically* written options were already opaque under `1` (`status-style` measured `bg=#1A1B26`), so nothing moves there. The *per-invocation* widgets do honor the option live — `git-status.sh` and `path-widget.sh` re-source `themes.sh` on every status refresh and emit `bg=default` today — so flipping it to `0` makes the git and path status cells opaque. That is a **visible loss of terminal translucency**, not a no-op; Alacritty runs `opacity = 0.95` (`~/.config/alacritty/alacritty.toml:9`).
+
+Add to `claude.conf`, **after** the existing `pane-border-status`/`pane-border-format` block (`claude.conf:23-28`) and **before** the `cc-beacon install-bar` line (`claude.conf:35`):
+```
+# Tuned tokyo-night overrides (try-on t2/t3) — raises 6 raw-default
+# interactive-element options to hex, night-variant-consistent colors.
+set -g popup-style "fg=#c0caf5,bg=#1A1B26"                 # 10.59:1
+set -g copy-mode-match-style "bg=#e0af68,fg=#1A1B26"       # 8.55:1
+set -g copy-mode-current-match-style "bg=#ff9e64,fg=#1A1B26" # 8.40:1
+set -g copy-mode-mark-style "bg=#f7768e,fg=#1A1B26"        # 6.46:1
+set -g window-style "bg=#1A1B26"
+set -g window-active-style "bg=#1A1B26"
+```
+Placement rationale, corrected: the "so cc-beacon caches the tuned values" story does **not** apply to this block. `cc-beacon install-bar` caches exactly three keys — `window-status-format`, `window-status-current-format`, `status-right` (kb atom; `main.rs:221-243`) — and **none** of the six options above is one of them. So for block 1 the placement is ordering-**irrelevant**; put it after the pane-border block for readability, not for correctness. (It *is* load-bearing for block 2, which writes `status-right`/`status-left` — see there.)
+
+No `.gitignore` change (plugin already whitelisted). Try-on: `tmux source-file ~/.tmux/tmux.conf`. Rollback: revert the two edits, reload.
+
+**2. catppuccin/tmux (mocha)**
+
+```
+# tmux.conf, replacing the tokyo-night @plugin line for this try-on:
+set -g @plugin 'catppuccin/tmux#v2.3.0'
+set -g @catppuccin_flavor "mocha"
+set -g @catppuccin_window_status_style "basic"
+```
+`.gitignore` line — **not** `plugins/catppuccin-tmux/`: TPM clones by repo basename, and `catppuccin/tmux`'s basename is `tmux`, so the clone lands at `~/.tmux/plugins/tmux/` — add `plugins/tmux/` (verified via `plugin_functions.sh:86-88`, `plugin_name_helper` = `basename(user/repo)`).
+
+Add to `claude.conf` (after the pane-border block at `:23-28`, **before** `cc-beacon install-bar` at `:35` — here the ordering *is* load-bearing: catppuccin writes no `status-left`/`status-right` itself, this block does, and `status-right` is one of cc-beacon's three cached keys, so install-bar must run after it or `@claude_bar_base_sr` freezes an empty base and the composed modules never appear under the glyphs):
+```
+set -g status-right ""
+set -agF status-right "#{E:@catppuccin_status_gitmux}"     # requires gitmux installed — see gap
+set -agF status-right "#{E:@catppuccin_status_directory}"
+set -g status-left ""
+set -agF status-left "#{E:@catppuccin_status_session}"
+```
+Try-on: comment out the tokyo-night `@plugin`/option lines, add the block above, `prefix I` (fresh install), `tmux source-file ~/.tmux/tmux.conf`. Rollback: `rm -rf ~/.tmux/plugins/tmux`, restore the tokyo-night lines, `prefix I`, reload.
+
+**3. dracula/tmux**
+
+```
+set -g @plugin 'dracula/tmux'
+set -g @dracula-plugins "git cwd"
+set -g @dracula-show-powerline false
+```
+`.gitignore` line: **also** `plugins/tmux/` — `dracula/tmux` has the same basename collision as catppuccin (verified: both repos are literally named `tmux`). **This means catppuccin and dracula cannot be try-on'd back-to-back without removing the other's clone first** — `rm -rf ~/.tmux/plugins/tmux` between switches, not just editing the `@plugin` line, or TPM will silently reuse whatever is already in that directory.
+
+No claude.conf change needed for status-right composition (dracula builds its own via `@dracula-plugins`); cc-beacon's existing 3-key-cache mechanism applies unchanged.
+
+**Shared try-on/rollback procedure (all three)**
+
+**`source-file` never unsets anything.** Every option the *outgoing* theme wrote survives into the incoming one unless the incoming theme happens to write the same option. Tokyo-night → catppuccin is the worst case in this pool: catppuccin writes no `status-left`/`status-right`/lengths, no `pane-border-*` and no `window-status-separator` — so tokyo-night's `status-left-length 80`, `status-right-length 150`, its `status-left`, its pane-border colors and `window-status-separator ""` would all silently persist and be judged as if they were catppuccin's. Reset explicitly.
+
+1. Edit `tmux.conf` for the candidate (comment out the previous theme's plugin+option lines; the last line, `run-shell 'tmux source-file ~/.tmux/claude.conf'`, must stay literally last).
+2. If the plugin changed: `prefix I` to install.
+3. **Unset the outgoing theme's writes**, so the incoming theme is judged on its own defaults. Tokyo-night's full written set is `tokyo-night.tmux:15,16,20,22,23,25,26,27,29,30,71,75,77,80,81` — the same 15 options t1's current-value table lists, seen from the writer's side — and the tuned block above adds 6 more:
+   ```
+   tmux set -gu status-left-length; tmux set -gu status-right-length
+   tmux set -gu status-left;        tmux set -gu status-right
+   tmux set -gu status-style
+   tmux set -gu mode-style;         tmux set -gu message-style
+   tmux set -gu message-command-style
+   tmux set -gu popup-style;        tmux set -gu popup-border-style
+   tmux set -gu pane-border-style;  tmux set -gu pane-active-border-style
+   tmux set -gu pane-border-status
+   tmux set -gu window-status-format
+   tmux set -gu window-status-current-format
+   tmux set -gu window-status-separator
+   tmux set -gu window-style;       tmux set -gu window-active-style
+   tmux set -gu copy-mode-match-style
+   tmux set -gu copy-mode-current-match-style
+   tmux set -gu copy-mode-mark-style
+   ```
+   Switching *away* from catppuccin or dracula: same list, plus that theme's extras — catppuccin also writes `menu-selected-style` (`catppuccin_tmux.conf:44`) and `clock-mode-colour` (`:225`); dracula also writes `clock-mode-style` (`dracula.sh:156,158`), `window-status-activity-style` and `window-status-bell-style` (`:405,:406`). All 21 option names above were verified to `set -gu` cleanly back to tmux defaults on an isolated `tmux -L` 3.5a server. `pane-border-status` is safe to unset here because `claude.conf` (the last line of `tmux.conf`) re-asserts `top` plus its `window-layout-changed` hook on the reload in step 5.
+4. `tmux set -gu @claude_bar_base_wsf; tmux set -gu @claude_bar_base_wscf; tmux set -gu @claude_bar_base_sr` — **all three, before** reloading (kb atom: reload-then-unset double-appends).
+5. `tmux source-file ~/.tmux/tmux.conf` — exactly once.
+6. Visually confirm: git status, path, fleet roster glyphs, pane border badge all present; then judge contrast.
+7. Rollback = repeat steps 1–5 with the previous theme's config restored.
+
+*Alternative to steps 3–4, if a switch ever looks contaminated:* try the candidate on a fresh isolated server instead — `tmux -L tryon -f ~/.tmux/tmux.conf new-session`. That guarantees no stale writes at the cost of not exercising the real session's windows/panes, so use it as a tiebreaker, not the default path.
+
+## Expected gaps for t4
+
+- **Tuned tokyo-night**:
+  - Still relies on this ticket's untested hex picks for popup/copy-mode/window-style — t4 should live-verify against the user's eye, not just the arithmetic contrast ratios above. `mode-style`/`message-style` (already theme-set) are untouched here and may still want brightening.
+  - **Opacity loss — the thing to look for during t3, because the judge is the user's eye.** Alacritty runs `opacity = 0.95` (`~/.config/alacritty/alacritty.toml:9`), so anything tmux leaves at `bg=default` shows the desktop faintly through it. This try-on removes that in two places at once: (i) `transparent 0` makes the git and path status cells opaque (they emit `bg=default` today — the widgets honor the option live, per the kb atom); (ii) `window-style`/`window-active-style bg=#1A1B26` paints **every pane's entire background** with an opaque tmux color, which kills the terminal translucency across the whole screen, not just the status bar — the largest single visual change in this block. `popup-style bg=#1A1B26` does the same for popups (`prefix S` fleet picker, `prefix W` ticker, `prefix C` → popup launches). If the user likes the translucency, the fallback is to keep `transparent 1`, drop the two `window-*-style` lines, and take the copy-mode/popup contrast wins only.
+- **catppuccin**: (a) git parity needs `gitmux` installed (not present on this machine) — t4 must either install it or accept no git module; (b) path module shows basename only, narrower than tokyo-night's `~`-relative full path — needs a custom `@catppuccin_directory_text` override to match parity; (c) default `message-style` contrast (3.28:1) and `popup-border-style` contrast (1.80:1) are weak by this ticket's own numbers and need brightening; (d) `copy-mode-*-style` and `window-style`/`window-active-style` are still raw defaults (5 of 10 gaps remain); (e) `mode-style` is written bg-only, so even though it counts as "covered" it leaves copy-mode selection *foreground* uncontrolled — t4 should re-write it with an explicit `fg=`, making it a sixth override in practice.
+- **dracula**: 9 of the 10 interactive-element options are raw defaults — `message-style` is the single one dracula sets (`dracula.sh:174`, white on gray, 8.59:1, adequate as-is). t4 would need to hand-write the other nine (mode / message-command / popup×2 / copy-mode×3 / window×2) from scratch, still the largest override list of the three.
+
+## Uncertainties
+
+- The copy-mode-*-style hex overrides proposed for tuned tokyo-night are **[判斷]** — untested against the live server, not yet visually confirmed; only the arithmetic WCAG-ish ratio is computed.
+- Neither rose-pine's nor catppuccin's `mode-style` contrast could be computed: both set `bg` only (`rose-pine.tmux:478` `bg=${thm_hl_med}`; `catppuccin_tmux.conf:224` `bg=#{@thm_surface_0},bold`), so the effective `fg` is whatever Alacritty's default foreground resolves to — out of scope to verify here. This is recorded as a **shared caveat on both**, not as a discriminator: rose-pine's cut rests on its 3.38:1 default status text, and catppuccin's coverage is scored 4 full + 1 partial because of it. Neither is a hard number.
+- t1's copy-mode-*-style table entries use tmux's *named* colors (`cyan`/`magenta`/`red` on `black`), not hex; their real rendered contrast depends on Alacritty's ANSI palette (out of scope per the map), so the "raw default" baseline itself is not fully hex-verifiable — this is exactly why hex overrides (as proposed for tuned tokyo-night) are preferable to leaving named-color defaults in place, but it also means the *current* 4/10-vs-10/10 framing undercounts how "bad" the true-color defaults are until seen live.
+- All WCAG-style contrast numbers in this draft use a standard sRGB relative-luminance formula, not a rendered-terminal measurement — treat them as decision-support arithmetic, not a substitute for t3's live-in-terminal judgment call.
+- catppuccin's `@catppuccin_status_gitmux`/`@catppuccin_status_directory`/`@catppuccin_status_session` module-variable names used in the try-on block are read from `utils/status_module.conf:30` (`"@catppuccin_status_${MODULE_NAME}"`) — pattern-verified but not live-tested end-to-end on this machine.
+
+## reusable_findings
+
+**TPM's plugin directory name is the repo basename, not a namespaced tag — same-named theme repos collide.** `plugin_functions.sh:86-88` (`plugin_name_helper`) takes `basename(user/repo)`. `catppuccin/tmux`, `dracula/tmux`, and `rose-pine/tmux` are all literally named `tmux`, so all three clone to the identical path `~/.tmux/plugins/tmux/`. Any future TPM-plugin comparison workflow in this repo must `rm -rf` (or rename) the shared directory between candidates, not just edit the `@plugin` line — editing the line alone leaves stale files from the previous candidate in place for TPM to silently reuse.
+
+**TPM only sources a plugin's top-level `*.tmux` files — nested entry scripts are invisible to it.** `source_plugins.sh:17` globs `$plugin_path*.tmux` with no recursion. A repo that ships its tmux integration nested (nightfox.nvim's `extra/<variant>/<variant>.tmux`) is not a working TPM tmux-theme plugin regardless of what its README implies about being installable — verify with a literal top-level `ls <clone>/*.tmux` before ever proposing `set -g @plugin` for a theme repo.
+
+**`tmux source-file` is additive — swapping themes by editing the `@plugin` line leaves the outgoing theme's writes in place.** tmux options have no "reset to what the config says" semantics: re-sourcing `tmux.conf` only *re-executes* `set` commands, so any option the outgoing theme wrote and the incoming one does not write silently persists and gets attributed to the incoming theme. A theme A/B comparison is therefore only valid if it is preceded by an explicit `set -gu` of the outgoing theme's full written set (derive it by grepping the theme's entry script for `tmux set`), or run on a fresh `tmux -L <socket>` server. Verified 2026-08-24 on 3.5a: all 21 option names in the shared procedure above `set -gu` cleanly back to compiled-in defaults.
+
+**tmux's style-option parser accepts space or comma between attributes — don't flag space-separated `set-option` style strings as bugs.** Empirically verified on the installed tmux 3.5a (`tmux -L <isolated-socket> set-option -g mode-style "fg=X bg=Y bold"` succeeds and round-trips via `show-options`), contrary to the assumption that only comma-separated attribute lists are valid. Relevant because at least one surveyed theme fork (z3z1ma/tmux-gruvbox) builds space-joined style strings that looked suspicious at a glance.

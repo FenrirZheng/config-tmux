@@ -1,0 +1,11 @@
+:PROPERTIES:
+:ID:       f25ecdd2-f255-4caf-9fed-de101f76be9f
+:END:
+#+TITLE: tmux style-option parser accepts space or comma between attributes
+#+KB_FORMAT: atomic-kb/1
+
+tmux's style parser treats space and comma interchangeably as attribute separators in style options — =set-option -g mode-style "fg=X bg=Y bold"= is as valid as the comma form. Don't flag space-separated style strings in third-party tmux code as bugs. Empirically verified 2026-08-24 on tmux 3.5a: the space form succeeds on an isolated =tmux -L= socket and round-trips via =show-options=.
+
+* Notes
+
+Found while auditing theme sources in the tmux-ui-clarity survey: =z3z1ma/tmux-gruvbox= builds space-joined style strings that looked suspicious at a glance but are legal. The verification used an isolated socket precisely so the user's running server never saw a test write — the same discipline any style-option probe should follow.

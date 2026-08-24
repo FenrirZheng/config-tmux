@@ -1,0 +1,17 @@
+:PROPERTIES:
+:ID:       65c393e2-1513-4774-9b82-da83b6045f1e
+:END:
+#+TITLE: tmux source-file is additive — theme swaps need an explicit unset sweep
+#+KB_FORMAT: atomic-kb/1
+
+=tmux source-file= only re-executes =set= commands; tmux options have no "reset to what the config says" semantics. Any option the outgoing theme wrote and the incoming theme does not write silently persists across a swap and gets visually attributed to the incoming theme. A theme A/B comparison is therefore only valid after an explicit =set -gu= of the outgoing theme's full written option set, or on a fresh =tmux -L <socket>= server. Established 2026-08-24 (tmux 3.5a) during the tmux-ui-clarity theme survey.
+
+* Notes
+
+The worst case measured in the 2026-08 survey pool: tokyo-night → catppuccin. catppuccin writes no =status-left=/=status-right=/lengths, no =pane-border-*=, no =window-status-separator= — so tokyo-night's =status-left-length 80=, =status-right-length 150=, its =status-left=, pane-border colors and =window-status-separator ""= would all persist and be judged as if they were catppuccin's defaults.
+
+Derive the unset list by grepping the outgoing theme's entry script for =tmux set= (tokyo-night's full written set is 15 options, =tokyo-night.tmux:15-81=). All 21 option names used in the survey's shared try-on procedure were verified to =set -gu= cleanly back to compiled-in defaults on an isolated =tmux -L= 3.5a server.
+
+Interaction with this repo's custom layer: =pane-border-status= is safe to include in the unset sweep only because =claude.conf= (the last line of =tmux.conf=) re-asserts =top= plus its =window-layout-changed= hook on the subsequent reload. The cc-beacon three-key base-cache reset (=@claude_bar_base_wsf/_wscf/_sr=, unset-then-reload-once) is a separate, additional requirement — see [[id:2b82616c-920f-4d22-80f5-b35117637d08][cc-beacon install-bar theme cache and reset ordering]].
+
+The fresh-server alternative (=tmux -L tryon -f ~/.tmux/tmux.conf new-session=) guarantees zero stale writes but does not exercise the real session's windows/panes — a tiebreaker, not the default path.

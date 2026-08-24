@@ -1,0 +1,23 @@
+:PROPERTIES:
+:ID:       d662dbde-d8a8-456e-9026-4f106b30b90e
+:END:
+#+TITLE: TPM plugin install mechanics: basename clone dirs and top-level tmux glob
+#+KB_FORMAT: atomic-kb/1
+
+TPM names a plugin's clone directory by the bare repo basename and sources only top-level =*.tmux= files from it — two mechanics that together decide whether a =set -g @plugin= line works at all and whether two plugins can coexist on disk. Verified 2026-08-24 against =~/.tmux/plugins/tpm= during the tmux-ui-clarity theme survey.
+
+* Notes
+
+** Basename clone directories — same-named repos collide
+
+=plugin_name_helper= (=~/.tmux/plugins/tpm/scripts/helpers/plugin_functions.sh:83-89=) derives the clone directory from =basename(user/repo)= (minus =.git=). =catppuccin/tmux=, =dracula/tmux=, and =rose-pine/tmux= are all literally named =tmux=, so all three clone to the identical path =~/.tmux/plugins/tmux/=.
+
+Consequences:
+- The per-plugin =.gitignore= convention in =~/.tmux/.gitignore= needs =plugins/tmux/= for any of them — never =plugins/catppuccin-tmux/=.
+- A theme A/B comparison between same-basename plugins must =rm -rf= (or rename) the shared directory between candidates. Editing the =@plugin= line alone leaves the previous candidate's files in place, and TPM silently reuses whatever already sits in that directory.
+
+** Top-level glob — nested entry scripts are invisible
+
+=source_plugins.sh:17= globs =$plugin_path*.tmux= with no recursion, and execs each match directly. A repo whose tmux integration lives nested (e.g. =EdenEast/nightfox.nvim= ships every variant at =extra/<variant>/<variant>.tmux=, none with the executable bit) is not a working TPM plugin regardless of what its README implies — =set -g @plugin 'edeneast/nightfox.nvim'= sources nothing.
+
+Cheap preflight before proposing any =@plugin= line: =ls <clone>/*.tmux= at the top level must return at least one file.
