@@ -95,7 +95,8 @@ Adjacent surface, out of current scope: =display-menu= styles (=menu-style=/=men
 ** TODO Select dark high-contrast theme candidates for live try-on :research:
 :PROPERTIES:
 :CUSTOM_ID: t2
-:ASSIGNEE:
+:ASSIGNEE: fenrir@641c3176
+:CLAIMED_AT: 2026-08-24 08:44
 :BLOCKED_BY: t1
 :END:
 
