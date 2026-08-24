@@ -21,6 +21,7 @@ The tmux UI keeps its dark background but reads clearly: status bar, interactive
 - [[#t1][Inventory tmux styling levers and tokyo-night's supplied axes]] — Axis checklist + current-value table landed; only git+path widgets live (six dormant), transparent bakes static opts opaque, cc-beacon caches 3 base keys needing unset-then-reload, 6 of 10 interactive-element styles are raw defaults
 - [[#t2][Select dark high-contrast theme candidates for live try-on]] — Shortlist for live try-on: tuned tokyo-night (low-risk incumbent, 6 hex overrides), catppuccin mocha (contrast leader 12.14:1, needs gitmux for git parity), dracula (only alternative with native git+path parity, most active); rose-pine/nightfox/gruvbox ports cut on contrast, TPM-installability, or staleness
 - [[#t3][Live try-on of theme candidates and pick]] — User picked catppuccin mocha on sight (「配色最順眼」) after live try-on of all three candidates; end state committed live with theme options moved above run tpm; t4 gap list recorded
+- [[#t4][Apply chosen theme with overrides and final acceptance]] — catppuccin mocha wired permanently with mocha-hex interactive-element overrides and gitmux git segment; all t1 axes re-verified; user acceptance passed and the Alacritty fog line dissolved
 
 * Not yet specified
 
@@ -209,11 +210,10 @@ Apply t2's candidates one at a time in the user's real tmux (theme swap is live 
 - Housekeeping: decide whether to remove the tokyo-night plugin + its =.gitignore= line and the parked comment blocks; optional =@catppuccin_status_background "none"= if the user wants Alacritty translucency back on the status bar (panes already show it — =window-style= stays unset).
 - review: settled live with user
 
-** TODO Apply chosen theme with overrides and final acceptance :task:
+** DONE Apply chosen theme with overrides and final acceptance :task:
 :PROPERTIES:
 :CUSTOM_ID: t4
 :ASSIGNEE: fenrir@72d1333c
-:CLAIMED_AT: 2026-08-24 12:47
 :BLOCKED_BY: t3
 :END:
 
@@ -222,3 +222,20 @@ Apply t2's candidates one at a time in the user's real tmux (theme swap is live 
 Execute the pick in place (this map carries execution): wire the chosen theme permanently in tmux.conf (TPM line + per-plugin .gitignore line per repo convention, or tokyo-night option changes if the tuned incumbent won); write the interactive-element overrides (mode/message/popup/window styles) the try-on showed were needed; re-verify every t1 axis under the final config — especially claude.conf's load-order contract, pane-border badge, and fleet roster; reload and commit.
 
 Final acceptance is the user's eyeball, including the overall-text-contrast judgment: if contrast is still insufficient, that does NOT block closing this ticket — it graduates the fog line about the Alacritty-palette exception (colors only, never opacity) into a ticket for the user to decide. Resolution records what was applied, the axis re-verification results, and the acceptance verdict.
+
+*** Resolution
+
+Executed across two sessions: session WW (claim fenrir@641c3176) did the wiring and was displaced by forced release after its exit mid-ticket (recorded in the ledger); this session (fenrir@72d1333c) verified, committed, and ran acceptance.
+
+What was applied (tmux repo commits =9aeeb00= try-on end state, =7dc1871= final wiring, =f24ee24= kb atom):
+
+- Theme permanent: =@plugin 'catppuccin/tmux#v2.3.0'= (pinned), options above the =run tpm= line per the load-order mechanism in [[id:51c9a24b-e07b-479e-8b83-378025e2c549][tokyo-night-tmux widget gating and transparent split]] and the try-on's kb atom; tokyo-night plugin removed (dir deleted, .gitignore line dropped; rollback = git history).
+- Status bar composed from catppuccin module vars with =-ag= (never =-agF= — see [[id:239a49e5-9b6d-4c05-8585-30d314ace9e7][tmux set -agF bakes format expansion at set time]]): gitmux git segment (binary at =~/.local/bin/gitmux=, untracked manual install like gitleaks; config =~/.gitmux.conf=), ~-relative full-path directory module, catppuccin session segment on the left.
+- Interactive-element overrides in claude.conf (loads last, wins): =mode-style fg=#cdd6f4,bg=#585b70,bold=; =message-style fg=#cdd6f4,bg=#313244=; =message-command-style fg=#89b4fa,bg=#313244=; =popup-style fg=#cdd6f4,bg=#181825=; =popup-border-style fg=#89b4fa=; =copy-mode-match-style bg=#f9e2af,fg=#11111b=; =copy-mode-current-match-style bg=#fab387,fg=#11111b=; =copy-mode-mark-style bg=#f38ba8,fg=#11111b=.
+- =window-style=/=window-active-style= deliberately left unset: panes keep the Alacritty 0.95 translucency (user decision 2026-08-24, recorded live by session WW during the try-on).
+
+Axis re-verification under the final config (probed on the running server, 2026-08-24): tokyo-night plugin gone from =plugins/=; claude.conf still the literal last line of tmux.conf (load-order contract); =status-right= chain = gitmux + directory + fleet-roster glyphs, live; =@claude_bar_base_sr= caches the catppuccin-era base (three-key reset was done per [[id:2b82616c-920f-4d22-80f5-b35117637d08][cc-beacon install-bar theme cache and reset ordering]]); pane-border badge format intact, =pane-border-status top=; gitmux renders real output (=main ✚ 3 … 1=); copy-mode/popup overrides live. A Nerd Font gap surfaced during execution (powerline caps rendered as tofu) — fixed by installing DejaVuSansM Nerd Font and recorded as home CLAUDE.md bootstrap step 8, outside this repo.
+
+Acceptance (this session, 2026-08-24): the user passed the eyeball check — User: 「通過」 — and judged overall pane-text contrast sufficient with tmux-layer work alone — User: 「夠了，霧線移除」 — so the Alacritty-palette exception fog line was removed instead of graduating into a ticket.
+
+- review: settled live with user
