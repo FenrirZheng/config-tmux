@@ -2,6 +2,7 @@
 plugins/tpm/
 plugins/tmux-sensible/
 plugins/tokyo-night-tmux/
+plugins/tmux/
 
 # Layout snapshots written by `prefix M-s` — machine state, not config.
 # (cargo build output is excluded by tools/.gitignore, next to the workspace.)
