@@ -1,0 +1,28 @@
+:PROPERTIES:
+:ID:       7b0a4a9e-6d1f-4d51-b1a4-3e6f8c2d9a41
+:END:
+#+TITLE: Theme options set below the run-tpm line are invisible to plugin scripts at TPM load
+#+KB_FORMAT: atomic-kb/1
+
+In this repo's =tmux.conf=, =@plugin= *discovery* works no matter where the line sits (TPM greps the conf file for =@plugin=), but plugin *option values* must already be in the tmux server when the plugin's entry script runs — and on a =source-file= reload, entry scripts read options set below the =run '~/.tmux/plugins/tpm/tpm'= line as unset. Theme option lines therefore belong ABOVE the =run tpm= line. Measured 2026-08-24 (tmux 3.5a) during the t3 live try-on.
+
+* Links
+- validates :: [[id:51c9a24b-e07b-479e-8b83-378025e2c549][tokyo-night-tmux widget gating and transparent split]] — confirms that atom's [判斷] about why =transparent 1= was baked opaque: the same option-below-run-tpm ordering starved the entry script
+
+* Notes
+
+** The measurement
+
+With =set -g @dracula-plugins "git cwd"= sitting ~55 lines below =run tpm= in =tmux.conf=, a full =tmux source-file ~/.tmux/tmux.conf= produced a dracula status bar with battery/network/weather — the compiled-in default list (=scripts/dracula.sh:55=, =get_tmux_option "@dracula-plugins" "battery network weather"=). Immediately after the reload, =tmux show-option -gv @dracula-plugins= returned =git cwd= — the option WAS in the server by then, but the entry script had already read its default. Re-running =~/.tmux/plugins/tmux/dracula.tmux= directly (option now visible) rendered git+cwd correctly.
+
+** Why discovery still works
+
+TPM finds plugins by grepping the conf file for =@plugin= lines (=tpm/scripts/helpers/plugin_functions.sh=), so a =@plugin= declaration below =run tpm= still installs and sources. That asymmetry is what makes this failure subtle: the theme loads, so the config looks correct — only its options are silently defaulted.
+
+** Second instance
+
+The tokyo-night =transparent= bake (t1) fits the same mechanism: =@tokyo-night-tmux_transparent 1= sat below =run tpm=, so the entry script's statically-written options were computed with the option unread, while per-refresh widget scripts (which re-read options live) honored it. Two independent themes, same signature.
+
+** Operational rule
+
+Put every =@<theme>_*= / =@<plugin>-*= option line ABOVE =run tpm= in =tmux.conf=. After moving a theme's options, one fresh reload re-runs the entry script with the options visible. (Precise tmux run-shell scheduling internals are unverified [判斷]; the operational rule stands on the measurements alone.)
