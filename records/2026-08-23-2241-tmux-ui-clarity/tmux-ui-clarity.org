@@ -185,7 +185,8 @@ set -g @dracula-show-powerline false
 ** TODO Live try-on of theme candidates and pick :prototype:
 :PROPERTIES:
 :CUSTOM_ID: t3
-:ASSIGNEE:
+:ASSIGNEE: fenrir@641c3176
+:CLAIMED_AT: 2026-08-24 10:20
 :BLOCKED_BY: t2
 :END:
 
