@@ -20,6 +20,7 @@ The tmux UI keeps its dark background but reads clearly: status bar, interactive
 
 - [[#t1][Inventory tmux styling levers and tokyo-night's supplied axes]] — Axis checklist + current-value table landed; only git+path widgets live (six dormant), transparent bakes static opts opaque, cc-beacon caches 3 base keys needing unset-then-reload, 6 of 10 interactive-element styles are raw defaults
 - [[#t2][Select dark high-contrast theme candidates for live try-on]] — Shortlist for live try-on: tuned tokyo-night (low-risk incumbent, 6 hex overrides), catppuccin mocha (contrast leader 12.14:1, needs gitmux for git parity), dracula (only alternative with native git+path parity, most active); rose-pine/nightfox/gruvbox ports cut on contrast, TPM-installability, or staleness
+- [[#t3][Live try-on of theme candidates and pick]] — User picked catppuccin mocha on sight (「配色最順眼」) after live try-on of all three candidates; end state committed live with theme options moved above run tpm; t4 gap list recorded
 
 * Not yet specified
 
@@ -182,17 +183,33 @@ set -g @dracula-show-powerline false
 
 - review: 2 blockers (dracula scored 0/10 with =message-style= actually set at =dracula.sh:174= — corrected to 1/10; dracula's 13.36:1 "contrast leader" figure was computed on the powerline-separator background — actual status contrast 8.59:1, catppuccin leads at 12.14:1) + 6 should-fix + 2 nits addressed in one revise round; shortlist composition re-derived and survived on module-parity grounds; both blocker fixes independently spot-checked against theme source by the dispatching session.
 
-** TODO Live try-on of theme candidates and pick :prototype:
+** DONE Live try-on of theme candidates and pick :prototype:
 :PROPERTIES:
 :CUSTOM_ID: t3
 :ASSIGNEE: fenrir@641c3176
-:CLAIMED_AT: 2026-08-24 10:20
 :BLOCKED_BY: t2
+:CITES: t4
 :END:
 
 *** Question
 
 Apply t2's candidates one at a time in the user's real tmux (theme swap is live via source-file; zero-cost rollback), with git status + current path + fleet roster visible during each try-on so the preserved information set is judged in place. The user picks on sight — the pick is theirs, not the agent's. Record the chosen theme and what the user said about why (verbatim zh-TW quote for the load-bearing preference), plus any visible gaps noted during try-on that t4 must fix with overrides.
+
+*** Resolution
+
+**Pick: catppuccin/tmux, flavor mocha.** All three t2 candidates were applied live in the user's real tmux (swap procedure from [[#t2][t2]]'s Resolution: outgoing-theme =set -gu= sweep + three =@claude_bar_base_*= unsets before each single reload; =rm -rf ~/.tmux/plugins/tmux= between catppuccin and dracula). Progression of the user's on-sight judgments: tuned tokyo-night = front-runner after try-on 1; catppuccin took the lead at try-on 2; final pick catppuccin over dracula and tuned tokyo-night. Load-bearing preference, User (2026-08-24), selected from offered options in the final AskUserQuestion (not free text): 「配色最順眼」. Honest caveat on the judgment context: catppuccin was judged WITHOUT git status rendering (=gitmux= not installed) and with basename-only path — both stated to the user at judgment time; the pick stands with those gaps assigned to t4.
+
+**Live end state (committed =9aeeb00=):** catppuccin mocha is running now — =status-style bg=#181825,fg=#cdd6f4=, directory module + fleet roster on status-right, session segment on status-left, =pane-border-status top= and badge intact (cc-beacon re-cached on the correct post-composition base). tokyo-night and dracula lines parked as comments in =tmux.conf=/=claude.conf=; =.gitignore= gained =plugins/tmux/=; dracula clone removed; tokyo-night plugin still installed on disk for rollback until t4 finalizes.
+
+**New finding during try-on:** dracula initially rendered its DEFAULT module list (battery/network/weather) despite =@dracula-plugins "git cwd"= being in =tmux.conf= — theme option lines sitting below the =run tpm= line are invisible to plugin entry scripts at TPM load, while =@plugin= discovery (a file grep) still works. Landed as atom [[id:7b0a4a9e-6d1f-4d51-b1a4-3e6f8c2d9a41][theme options below run tpm are invisible at plugin load]]; it also confirms t1's [判斷] on the tokyo-night transparent bake (second independent instance, same signature). The end-state config already places catppuccin's option lines above =run tpm=; t4 must preserve that ordering.
+
+**Gap list for [[#t4][t4]]:**
+- Git parity (mandatory axis, currently ABSENT): install =gitmux= and add =#{E:@catppuccin_status_gitmux}= to the status-right composition, or get the user's explicit sign-off on living without a git module.
+- Path parity: directory module shows basename only — override =@catppuccin_directory_text= to a =~=-relative full path to match the tokyo-night baseline.
+- Contrast overrides (from t2's scorecard): brighten =message-style= (default 3.28:1, below AA) and =popup-border-style= (1.80:1, near-invisible); write the still-raw =copy-mode-match/current-match/mark-style=, =window-style=/=window-active-style=; re-write =mode-style= with an explicit =fg== (catppuccin sets bg only).
+- Keep theme options above =run tpm= (see atom); keep the claude.conf composition block before the =cc-beacon install-bar= line (=status-right= is a cached key).
+- Housekeeping: decide whether to remove the tokyo-night plugin + its =.gitignore= line and the parked comment blocks; optional =@catppuccin_status_background "none"= if the user wants Alacritty translucency back on the status bar (panes already show it — =window-style= stays unset).
+- review: settled live with user
 
 ** TODO Apply chosen theme with overrides and final acceptance :task:
 :PROPERTIES:
