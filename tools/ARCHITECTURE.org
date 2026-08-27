@@ -59,6 +59,23 @@ Two ordering constraints, both load-bearing:
 
 ** Crates
 
+Every crate below is Rust in the =tools/= cargo workspace *except =sift=*, which
+is C++ built by cmake. That divergence is a user directive, not a technical
+finding; the cost is a second build system in the bootstrap, and it is contained
+by having cmake write its binary into =target/release/= next to the cargo output
+so =claude.conf= keeps one path shape for every tool:
+
+#+begin_src sh
+cd ~/.tmux/tools
+cargo build --release
+cmake -S sift -B target/cmake-build -DCMAKE_BUILD_TYPE=Release && cmake --build target/cmake-build
+#+end_src
+
+=sift= has no =tmuxlib=. The only pieces it had to re-implement on the C++ side
+are the =tmux= subprocess call and the literal-message helper; it spawns =tmux=
+through =execvp= with an argv vector, never a shell string.
+
+
 | crate         | entry point                                    | plan                                                                            |
 |----------------+-------------------------------------------------+----------------------------------------------------------------------------------|
 | =tmuxlib=     | library — option contract, pane inventory, state model | all                                                                      |
@@ -72,6 +89,7 @@ Two ordering constraints, both load-bearing:
 | =talk-fleet=  | =role= / =bcast= / =collect=                   | talk-fleet-dispatch                                                             |
 | =cc-tape=     | =toggle= / =strip=                             | pane-tape                                                                       |
 | =seek=        | =word= / =line=, each with =--claude=          | [[../records/2026-08-09-1116-tmux-seek][records/2026-08-09-1116-tmux-seek]]    |
+| =sift=        | =<pane>= popup TUI / =rows= headless seam      | [[../docs/adr/0005-own-the-interaction-loop-for-regex-search.org][ADR-0005]] · [[../records/2026-08-27-2240-tmux-sift][records/2026-08-27-2240-tmux-sift]] |
 
 =seek= is the one crate whose design doc is not a file in [[../plans/][=plans/=]]: its specification is the wayfinder records directory above — read that map's *Current contract* section, which supersedes the tickets under it.
 
@@ -94,7 +112,7 @@ One trap worth knowing before editing those formats: *=#{P:A,B}= takes two forma
 
 Anything derived from tool arguments passes through =sanitize_format()= before being stamped: an activity string of =echo #{pane_pid}= must render literally, not expand.
 
-*That mandate covers text entering a /format context/* — a pane option, a border format, a =display-message= without =-l=. It is not the only way to be safe. =seek= echoes raw pane text back to the status line and deliberately does /not/ sanitize it: it stamps no options and passes =-l= on every message, so there is no format context to escape from, and filtering would corrupt the text the user asked to copy. The rule for a new tool is therefore: *either* keep untrusted text out of every format context (and prove it, as =seek= does), *or* sanitize. Note =tmuxlib::message()= expands formats — use [[tmuxlib/src/lib.rs][=message_literal()=]] for anything derived from pane text.
+*That mandate covers text entering a /format context/* — a pane option, a border format, a =display-message= without =-l=. It is not the only way to be safe. =seek= echoes raw pane text back to the status line and deliberately does /not/ sanitize it: it stamps no options and passes =-l= on every message, so there is no format context to escape from, and filtering would corrupt the text the user asked to copy. =sift= takes the same route for the same reason, and renders pane text only into its own popup. The rule for a new tool is therefore: *either* keep untrusted text out of every format context (and prove it, as =seek= does), *or* sanitize. Note =tmuxlib::message()= expands formats — use [[tmuxlib/src/lib.rs][=message_literal()=]] for anything derived from pane text.
 
 ** Key bindings
 
@@ -112,6 +130,7 @@ Anything derived from tool arguments passes through =sanitize_format()= before b
 | =prefix m= / =M=       | mark / unmark the Claude inbox (stock tmux)                           | to-claude |
 | copy-mode =Y=          | send selection to Claude as one paste                                 | to-claude |
 | =prefix Space=         | copy-mode + incremental search prompt (pure tmux, no binary)          | seek      |
+| =prefix /=             | popup regex search over the scrollback; Enter seats the cursor        | sift      |
 | copy-mode =w= / =W=    | grab the token under the cursor → clipboard+buffer / +Claude          | seek      |
 | copy-mode =l= / =L=    | grab the logical line under the cursor → clipboard+buffer / +Claude   | seek      |
 
