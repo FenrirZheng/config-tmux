@@ -24,17 +24,19 @@ pub enum State {
 }
 #+end_src
 
-The event → state-write table (condensed from the architecture doc):
+The event → state-write table, quoted from the architecture doc:
 
-#+begin_src text :file ARCHITECTURE.org
-SessionStart      -> session-start  -> stamp session_id, rename window, state=idle
-UserPromptSubmit  -> prompt         -> state=busy; stamp @claude_task on first prompt only
-PreToolUse *      -> activity       -> stamp @claude_activity, state=busy
-PostToolUse *     -> tool-done      -> append ticker line
-Notification      -> attn           -> state=needs-input; BEL if off-screen
-Stop              -> idle           -> state=idle, clear activity
-SessionEnd        -> clear          -> unset all @claude_* pane options
-#+end_src
+#+begin_quote :file ARCHITECTURE.org :lines 23-31
+| Claude Code event   | =cc-beacon= arg | effect                                                                          |
+|----------------------+-------------------+----------------------------------------------------------------------------------|
+| =SessionStart=       | =session-start=  | stamp =@claude_session_id=, rename window =cc:<dir>=, state → idle              |
+| =UserPromptSubmit=   | =prompt=         | state → busy; on the first prompt only, stamp =@claude_task= slug               |
+| =PreToolUse= =*=     | =activity=       | stamp =@claude_activity=, state → busy                                          |
+| =PostToolUse= =*=    | =tool-done=      | append one ticker line to =/tmp/claude-progress/<pane>.log=                     |
+| =Notification=       | =attn=           | state → needs-input; BEL to the pane tty *only if off-screen*                   |
+| =Stop=               | =idle=           | state → idle, clear activity, write =── idle ──= ticker divider                 |
+| =SessionEnd=         | =clear=          | unset all =@claude_*= pane options                                              |
+#+end_quote
 
 The window rollup is computed live from the option by tmux, never stored:
 
@@ -51,7 +53,7 @@ const WINDOW_GLYPH: &str = "#{?#{m:*needs-input*,#{P:#{@claude_state}|,#{@claude
 :SOURCES:
 :tmuxlib/src/lib.rs: sha256:14689e2aa7a744eb9389257e8c6fecaa54de92075e439153ea388e0be2453b36
 :cc-beacon/src/main.rs: sha256:6e6bb9502485f7a2f9920541b922823f35896c13f1be72a80b020bb21a5b69ee
-:ARCHITECTURE.org: sha256:bdfdd9268172632054176e947bb81ae54986d6462f9ea88d200ec118fe21fe1f
+:ARCHITECTURE.org: sha256:fa0ae8626f9bab3f9b12711f38abd7686472c8e408d80ee4dafc6895a474d082
 :cc-attend/src/main.rs: sha256:d4f6313e33a67b7e97adabd208b87430169ae033655bbf512addd1f8aca9d252
 :cc-fleet/src/main.rs: sha256:c1a7f42f124a18186c105ebab852cd67a52eb850c1a5addb71765d13e7f08ab5
 :talk-fleet/src/main.rs: sha256:769f04302901418a526bea4379b39b47fa68729637bf134e67fe5cce751a5a88

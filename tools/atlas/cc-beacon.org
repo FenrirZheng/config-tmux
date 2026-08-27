@@ -12,16 +12,16 @@ cc-beacon is a single Rust binary invoked once per Claude Code hook event (Sessi
 The whole binary is one event dispatch:
 
 #+begin_src rust :file cc-beacon/src/main.rs :lines 46-56
-match event.as_str() {
-    "session-start" => session_start(&pane, &payload),
-    "prompt" => prompt(&pane, &payload),
-    "activity" => activity(&pane, &payload),
-    "tool-done" => tool_done(&pane, &payload),
-    "attn" => attn(&pane),
-    "idle" => idle(&pane),
-    "clear" => clear(&pane),
-    _ => {}
-}
+    match event.as_str() {
+        "session-start" => session_start(&pane, &payload),
+        "prompt" => prompt(&pane, &payload),
+        "activity" => activity(&pane, &payload),
+        "tool-done" => tool_done(&pane, &payload),
+        "attn" => attn(&pane),
+        "idle" => idle(&pane),
+        "clear" => clear(&pane),
+        _ => {}
+    }
 #+end_src
 
 Every state write is one batched tmux call — state, timestamp, optional activity, refresh:

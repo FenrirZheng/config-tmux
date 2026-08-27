@@ -12,20 +12,21 @@ tmuxlib is a one-file library crate (~630 lines, no submodules), and that file i
 State resolution: stamped option first, title heuristic as the graceful fallback:
 
 #+begin_src rust :file tmuxlib/src/lib.rs :lines 282-296
-pub fn state(&self) -> State {
-    let stamped = State::parse(&self.state_raw);
-    if stamped != State::Unknown {
-        return stamped;
+    pub fn state(&self) -> State {
+        let stamped = State::parse(&self.state_raw);
+        if stamped != State::Unknown {
+            return stamped;
+        }
+        title_state(&self.title)
     }
-    title_state(&self.title)
-}
 
-pub fn is_claude(&self) -> bool {
-    if !self.state_raw.is_empty() || !self.session_id.is_empty() {
-        return true;
+    /// Whether this looks like a Claude Code pane at all.
+    pub fn is_claude(&self) -> bool {
+        if !self.state_raw.is_empty() || !self.session_id.is_empty() {
+            return true;
+        }
+        title_state(&self.title) != State::Unknown
     }
-    title_state(&self.title) != State::Unknown
-}
 #+end_src
 
 The format-injection defense every untrusted string passes through:

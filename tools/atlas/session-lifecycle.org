@@ -12,20 +12,20 @@ cc-launch and cc-layout sit at opposite ends of a Claude session's life: one sta
 The resume picker's dispatch — full uuid only, hidden as fzf's first field:
 
 #+begin_src rust :file cc-launch/src/main.rs :lines 88-101
-// The uuid rides as a hidden first field: `--with-nth=2..` shows the rest.
-let Some(pick) = fzf(
-    &menu,
-    &["--delimiter=\t", "--with-nth=2..", "--prompt=resume> "],
-) else {
-    return;
-};
-let Some(uuid) = parse_pick(&pick) else {
-    return;
-};
+    // The uuid rides as a hidden first field: `--with-nth=2..` shows the rest.
+    let Some(pick) = fzf(
+        &menu,
+        &["--delimiter=\t", "--with-nth=2..", "--prompt=resume> "],
+    ) else {
+        return;
+    };
+    let Some(uuid) = parse_pick(&pick) else {
+        return;
+    };
 
-// Claude Code rejects abbreviated ids, so the full uuid goes across.
-send_line(pane, &format!("claude --resume {uuid}"));
-t::message(&format!("resuming {uuid} in {pane}"));
+    // Claude Code rejects abbreviated ids, so the full uuid goes across.
+    send_line(pane, &format!("claude --resume {uuid}"));
+    t::message(&format!("resuming {uuid} in {pane}"));
 #+end_src
 
 The same "never type a guess" guard in restore, decided as pure data first:
@@ -46,22 +46,22 @@ fn pane_action(p: &PaneRec, has_transcript: impl Fn(&str) -> bool) -> PaneAction
 Where the decision gets typed into the restored pane — literal text, Enter separately:
 
 #+begin_src rust :file cc-layout/src/main.rs :lines 845-858
-PaneAction::Resume(uuid) => {
-    self.resumed += 1;
-    if self.dry || id.is_empty() {
-        return;
-    }
-    // Literal text, then Enter as its own key: one `send-keys` would
-    // have to push the whole line through tmux's key parser. And
-    // `claude --resume` is cwd-scoped, which is why the pane was
-    // created in its recorded cwd before this is typed.
-    let cmd = format!("claude --resume {uuid}");
-    if t::tmux(["send-keys", "-t", id, "-l", &cmd]).is_err()
-        || t::tmux(["send-keys", "-t", id, "Enter"]).is_err()
-    {
-        self.resumed -= 1;
-        self.skip(&format!("{at}  send-keys failed for {uuid}"));
-    }
+            PaneAction::Resume(uuid) => {
+                self.resumed += 1;
+                if self.dry || id.is_empty() {
+                    return;
+                }
+                // Literal text, then Enter as its own key: one `send-keys` would
+                // have to push the whole line through tmux's key parser. And
+                // `claude --resume` is cwd-scoped, which is why the pane was
+                // created in its recorded cwd before this is typed.
+                let cmd = format!("claude --resume {uuid}");
+                if t::tmux(["send-keys", "-t", id, "-l", &cmd]).is_err()
+                    || t::tmux(["send-keys", "-t", id, "Enter"]).is_err()
+                {
+                    self.resumed -= 1;
+                    self.skip(&format!("{at}  send-keys failed for {uuid}"));
+                }
 #+end_src
 
 * Links

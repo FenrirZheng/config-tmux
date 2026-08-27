@@ -1,0 +1,72 @@
+#+TITLE: sift
+#+ATLAS_TYPE: subsystem
+#+ATLAS_ID: sift
+#+ATLAS_GENERATOR: atlas/1
+
+* Summary
+
+=sift= is the popup regex search bound to =prefix /=, and the one thing in =tools/= that is not Rust: it is C++ built by cmake, which writes its binary into =target/release/= beside the cargo output so =claude.conf= keeps one path shape for every tool. It exists because tmux's incremental search is plain-text only, so the previous binding made you type a regex blind into a =command-prompt= and learn only on Enter whether it matched; =sift= owns the keystroke loop instead and lists every occurrence in the scrollback as you type. That is a deliberate narrowing of ADR-0001's "don't own the interaction loop" rule to plain search only — see ADR-0005.
+
+What it pointedly does *not* own is the jump. On Enter it seats the copy-mode cursor just past the chosen occurrence and then issues tmux's own =search-backward= with the same pattern, so *tmux* ends up holding the search and match highlighting, =n= / =N=, and seek's =w= / =W= / =l= / =L= grab keys all keep working unchanged. Almost every tmux command in that sequence misbehaves relative to its name — =goto-line= sets a scroll offset rather than a line number, and both searches wrap silently when they miss — so the jump ends by re-reading the cursor's coordinates and asserting where it landed rather than trusting the commands. The four measured surprises are recorded in the source comments and in ADR-0005's Notes.
+
+There is no =tmuxlib= on this side. The only pieces re-implemented in C++ are the =execvp=-based tmux spawn (an argv vector, never a shell string) and the literal =-l= message helper — which together are how =sift= discharges the same format-context proof obligation =seek= does: it stamps no pane options and renders pane text only into its own popup, so there is no format context to escape from and nothing has to be filtered. =sift rows <pane> <regex>= is the headless seam, mirroring =cc-fleet rows=; the behaviour above is pinned by =records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh= (13 assertions, including the jump arithmetic over CJK) and =verify-sift-live.sh= (5 assertions over real keystrokes) — those are what redden if the sequence shifts.
+
+* Crux
+
+=goto-line= is a scroll offset from the bottom of the history, not a line number, so the cursor row has to be pinned with =history-top= first; only then is =history_size - line= an exact seek. =history_size= is re-read here rather than reused from the capture, because it moves while the pane keeps printing:
+
+#+begin_src cpp :file sift/src/main.cpp :lines 297-306
+    std::vector<std::string> a = {"copy-mode", "-t", pane,
+                                  ";", "send-keys", "-X", "-t", pane, "history-top"};
+
+    if (line <= now.history_size) {
+        a.insert(a.end(), {";", "send-keys", "-X", "-t", pane,
+                           "goto-line", std::to_string(now.history_size - line)});
+    } else {
+        // Target is in the visible screen: pin the viewport to the bottom and
+        // step down to the row.
+        long down = line - now.history_size;
+#+end_src
+
+The chain-preserving step: the pattern is handed to tmux, which is what makes the highlight, =n= / =N= and seek's grab keys work afterwards. The whole sequence goes out as one command list while the popup is still up:
+
+#+begin_src cpp :file sift/src/main.cpp :lines 313-322
+    if (char_end > 0)
+        a.insert(a.end(), {";", "send-keys", "-X", "-N", std::to_string(char_end),
+                           "-t", pane, "cursor-right"});
+
+    // Registering the pattern with tmux is the point of this step, not just the
+    // positioning: it is what makes the match highlight, `n`/`N`, and seek's
+    // grab keys work afterwards.
+    a.insert(a.end(), {";", "send-keys", "-X", "-t", pane, "search-backward", pattern});
+
+    if (!tmux_run(a)) return false;
+#+end_src
+
+Verification is positional, never textual — =#{copy_cursor_line}= truncates at the first wide character, so comparing text would false-alarm on every CJK line. All five fields come from one =display-message= call so they describe one instant:
+
+#+begin_src cpp :file sift/src/main.cpp :lines 342-352
+    long f[5] = {0, 0, 0, 0, 0};
+    size_t start = 0;
+    for (int i = 0; i < 5; ++i) {
+        size_t tab = s.find('\t', start);
+        f[i] = strtol(s.substr(start, tab == std::string::npos ? std::string::npos
+                                                              : tab - start).c_str(), nullptr, 10);
+        if (tab == std::string::npos) break;
+        start = tab + 1;
+    }
+    long landed = f[0] - f[1] + f[2];
+    return f[4] == 1 && landed == line && f[3] == cell_start;
+#+end_src
+
+* Links
+
+- implements :: [[file:tmuxlib-lib.org][tmuxlib's single source file]] — honours the contract it cannot link against: the argv-vector tmux spawn and =message_literal='s =-l= discipline, re-implemented in C++
+
+* Sources
+:SOURCES:
+:sift/src/main.cpp: sha256:36b0c2a1e2c2841d794870fc1680ed5b39a28f19d1c4176a0ad02b728a618224
+:sift/CMakeLists.txt: sha256:5c493db5a172ceb3bdf80555bfb7b1ac62acaa90699006afb9901252454dbeba
+:END:
+
+* Notes

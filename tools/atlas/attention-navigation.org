@@ -12,15 +12,15 @@ This subsystem is the "which pane needs me right now" layer, split across two bi
 The shared priority scale both pickers sort by:
 
 #+begin_src rust :file tmuxlib/src/lib.rs :lines 80-88
-/// Attention ranking: lower sorts first in every picker in this workspace.
-pub fn priority(self) -> u8 {
-    match self {
-        State::NeedsInput => 0,
-        State::Idle => 1,
-        State::Busy => 2,
-        State::Unknown => 3,
+    /// Attention ranking: lower sorts first in every picker in this workspace.
+    pub fn priority(self) -> u8 {
+        match self {
+            State::NeedsInput => 0,
+            State::Idle => 1,
+            State::Busy => 2,
+            State::Unknown => 3,
+        }
     }
-}
 #+end_src
 
 =prefix N='s single-target selection: oldest blocked wins, else newest live idle:

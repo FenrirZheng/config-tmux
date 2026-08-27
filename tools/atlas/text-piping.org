@@ -5,7 +5,7 @@
 
 * Summary
 
-Four crates move text between a Claude pane and somewhere else, and they deliberately diverge on the one property that matters most — whether the text passes through a tmux format context. to-claude and to-emacs capture via =capture-pane= and report through =display-message=; to-claude additionally resolves *where* to deliver (marked pane first, else the most-recently-active Claude pane) and delivers via =send-keys -l= (typed, unsubmitted) or a bracketed =paste-buffer= for multi-line blocks. seek is copy-mode's grab-and-send: it classifies the grabbed token as a file reference or plain paste and pipes it to to-claude or the clipboard — and it is the one tool the architecture doc calls out as *intentionally bypassing* =sanitize_format()=, because it never stamps a pane option and always reports via =message_literal()= (no format expansion), so there is no format context to corrupt. cc-tape is the odd one out mechanically: it taps the pty byte stream via =pipe-pane= rather than snapshotting the screen, so it keeps recording through alt-screen TUIs where =capture-pane= goes blind. All four share the "never write pane titles, always report via display-message" discipline.
+Four crates move text between a Claude pane and somewhere else, and they deliberately diverge on the one property that matters most — whether the text passes through a tmux format context. to-claude and to-emacs capture via =capture-pane= and report through =display-message=; to-claude additionally resolves *where* to deliver (marked pane first, else the most-recently-active Claude pane) and delivers via =send-keys -l= (typed, unsubmitted) or a bracketed =paste-buffer= for multi-line blocks. seek is copy-mode's grab-and-send: it classifies the grabbed token as a file reference or plain paste and pipes it to to-claude or the clipboard — and it is the tool the architecture doc first called out as *intentionally bypassing* =sanitize_format()=, because it never stamps a pane option and always reports via =message_literal()= (no format expansion), so there is no format context to corrupt — =sift= later took the same route for the same reason, so the doc now states the rule as a choice between two proofs rather than one crate's exemption. cc-tape is the odd one out mechanically: it taps the pty byte stream via =pipe-pane= rather than snapshotting the screen, so it keeps recording through alt-screen TUIs where =capture-pane= goes blind. All four share the "never write pane titles, always report via display-message" discipline.
 
 * Crux
 
@@ -44,25 +44,26 @@ fn main() {
 The pipe wiring that makes cc-tape a stream tap, not a screen capture:
 
 #+begin_src rust :file cc-tape/src/main.rs :lines 238-250
-divider(&log, "tape on");
-let cmd = format!(
-    "exec {} strip >> {}",
-    sh_quote(&self_exe()),
-    sh_quote(&shown)
-);
-// tmux runs the pipe command through `sh` *after* expanding it as a
-// format string, so `#` has to survive the expansion pass first.
-if t::tmux_ok(["pipe-pane", "-t", pane, "-o", &esc_hash(&cmd)]) {
-    t::message(&esc_hash(&format!("cc-tape: ●REC on — {shown}")));
-} else {
-    t::message(&format!("cc-tape: pipe-pane failed for {pane}"));
-}
+        divider(&log, "tape on");
+        let cmd = format!(
+            "exec {} strip >> {}",
+            sh_quote(&self_exe()),
+            sh_quote(&shown)
+        );
+        // tmux runs the pipe command through `sh` *after* expanding it as a
+        // format string, so `#` has to survive the expansion pass first.
+        if t::tmux_ok(["pipe-pane", "-t", pane, "-o", &esc_hash(&cmd)]) {
+            t::message(&esc_hash(&format!("cc-tape: ●REC on — {shown}")));
+        } else {
+            t::message(&format!("cc-tape: pipe-pane failed for {pane}"));
+        }
 #+end_src
 
 * Links
 
 - uses :: [[file:tmuxlib-lib.org][tmuxlib's single source file]] — capture plumbing, message vs message_literal, pane resolution
 - depends_on :: [[file:claude-state-protocol.org][the @claude_state lifecycle protocol]] — to-claude's "most recently active Claude pane" target resolution reads the stamped options
+- depends_on :: [[file:sift.org][sift]] — seek's =w= / =W= / =l= / =L= grab keys chain from wherever sift's Enter seats the copy-mode cursor, so a change to that landing changes what they grab
 
 * Sources
 :SOURCES:

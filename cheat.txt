@@ -12,7 +12,8 @@
   COPY & GRAB  prefix [        copy mode (leave with q)
                prefix Space    seek: search, jump, grab — type any text, Enter,
                                the cursor lands on the match (runbooks/seek.md)
-               prefix /        regex search — type pattern, Enter; n/N next/prev
+               prefix /        regex search popup — filters as you type, Enter
+                               jumps; n/N next/prev (runbooks/sift.md)
                copy-mode w     grab the token under the cursor → clipboard
                copy-mode l     grab the whole logical line → clipboard
                                both repeat: the pane stays in copy-mode, and
@@ -45,7 +46,6 @@
 
   OTHER        prefix P        popup shell in this pane's directory
                prefix d        detach          prefix :   command prompt
-               prefix /        describe one key
                prefix M-?      FULL key list (this sheet is the curated 10%)
 
   ─────────────────────────────────────────────────────────────────────

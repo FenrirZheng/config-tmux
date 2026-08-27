@@ -1,0 +1,173 @@
+#+TITLE: tmux-sift — prefix / as a popup regex search
+#+TODO: TODO | DONE CANCELLED
+#+WF_FORMAT: 1
+
+* Destination
+
+~prefix /~ shows every regex match in the pane's scrollback *while the pattern is
+being typed*, and ~Enter~ sends the pane to the occurrence picked out of that list —
+without breaking match highlighting, ~n~ / ~N~, or seek's ~w~ / ~W~ / ~l~ / ~L~ grab
+keys, all of which depend on *tmux* holding the search rather than us.
+
+*Status 2026-08-27: reached.* The tool is built, bound, and verified — 13 headless
+assertions plus 5 over real keystrokes, both suites green (re-run 2026-08-27 before
+this map was written, not taken from the previous session's report). This map carried
+execution, not just specification: unlike [[file:../2026-08-09-1116-tmux-seek/tmux-seek.org][tmux-seek]] there is no ticket
+trail, because the design was settled in one plan and one ADR rather than by
+grilling. [[*Current contract][Current contract]] below is what an implementer or a
+future session needs; everything else is provenance.
+
+* Notes
+
+- Working repo: =/home/fenrir/.tmux= @ =main= (single worktree; remote FenrirZheng/config-tmux).
+- Design decision and the boundary against ADR-0001: [[file:../../docs/adr/0005-own-the-interaction-loop-for-regex-search.org][ADR-0005]].
+  Its =* Notes= section carries the five measured tmux behaviours below and is the
+  authority on them.
+- Operating, installing, troubleshooting, rolling back: [[file:../../runbooks/sift.md][runbooks/sift.md]].
+- The plain-text sibling on ~prefix Space~ is =seek= ([[file:../../docs/adr/0001-build-seek-on-tmux-builtin-incremental-search.org][ADR-0001]],
+  [[file:../../runbooks/seek.md][runbooks/seek.md]]). =sift= is deliberately *not* built on the same bargain —
+  see the contract below.
+- Atlas node for the code: [[file:../../tools/atlas/sift.org][tools/atlas/sift.org]].
+- Binding conventions every tool here respects ([[file:../../tools/ARCHITECTURE.org][ARCHITECTURE.org]]): exit 0
+  even when there is nothing to do (a non-zero exit becomes a tmux error popup),
+  never write pane titles, report through =display-message=. New tools register in
+  both the Crates table and the Key bindings table there.
+
+* Decisions so far
+
+Four were the user's to make and were taken as directives, not findings:
+
+1. *Live result list*, not just validate-then-jump — the list is the feature.
+2. *Enter jumps and stays in copy-mode*, so the grab keys chain from the landing.
+3. *Fully replace* the 2026-08-22 ~prefix /~ binding rather than adding a second key.
+4. *C++ with cmake*, output into =tools/target/release/= beside the cargo binaries.
+
+Directive 4 is the one with a standing cost: the toolset is no longer a single
+=cargo build=, and =cargo clean= now deletes =sift= along with the Rust binaries.
+It is contained by the shared output directory — =claude.conf= keeps one path shape
+for every tool — and by =tools/.gitignore='s existing =target/= rule, which already
+covers both the cmake build tree and its output, so no new ignore rule was needed.
+
+* Current contract
+
+Everything here supersedes anything above it that it contradicts.
+
+** The binding
+
+=claude.conf=, guarded at *load* time exactly like seek's — building the binary is
+not enough, the config must be re-sourced:
+
+#+begin_src conf
+if-shell '[ -x ~/.tmux/tools/target/release/sift ]' {
+  bind -T prefix / display-popup -E -w 90% -h 70% -T ' regex ' \
+    "~/.tmux/tools/target/release/sift '#{pane_id}'"
+} {
+  bind -T prefix / display-message -l 'sift: not built — ...'
+}
+#+end_src
+
+The stub branch names the build command rather than failing silently. ~prefix /~
+still overrides tmux's stock =describe-key= prompt; key help stays on ~prefix ?~ /
+~M-?~, the same precedent as ~prefix C~ over customize-mode.
+
+** Surface
+
+Two invocations. =sift <pane-id>= is the popup TUI; =sift rows <pane-id> <regex>=
+is the headless seam every test asserts against, mirroring =cc-fleet rows=, emitting
+=line, char_start, char_end, cell_start, text= per match.
+
+Three different "columns" exist and are never mixed silently: =regexec= reports
+*bytes*, copy-mode's =cursor-right= moves by *characters*, and =#{copy_cursor_x}=
+and the screen are measured in *cells* (CJK = 2).
+
+** What sift owns, and what it deliberately does not
+
+=sift= owns the keystroke loop — that is the whole of what ADR-0005 changed relative
+to ADR-0001, and it is narrowed to regex search only.
+
+It does *not* own the jump. On ~Enter~ it seats the copy-mode cursor just past the
+chosen occurrence and issues tmux's own =search-backward= with the same pattern, so
+tmux ends up holding the search. That is what keeps match highlighting, ~n~ / ~N~ and
+seek's grab keys working unchanged, and it is the load-bearing part of the design: a
+self-drawn jump would have silently broken all three.
+
+Match semantics are POSIX extended regex via =regcomp(REG_EXTENDED)=, *not*
+=std::regex= — chosen so the list can never offer a hit tmux's own search cannot
+reproduce. Assertion 9 of the jump suite is the differential test that pins this.
+
+** Format-context safety
+
+=sift= takes seek's route, not the =sanitize_format()= route: it stamps no pane
+options, renders pane text only into its own popup, and passes =-l= on every
+=display-message=. There is therefore no format context to escape from, and nothing
+has to be filtered — filtering would corrupt the text the user is trying to read.
+ARCHITECTURE.org's Conventions section now states the rule as a choice between two
+proofs rather than as one tool's exemption.
+
+tmux is always spawned via =execvp= with an argv vector, never a shell string, so a
+scrollback line full of shell metacharacters is inert.
+
+** Bounds
+
+The collector stops at 20000 occurrences and says so in the header (=20000+ matches
+(capped)=) rather than applying the cap silently — =.= over a full scrollback is a
+legitimate keystroke on the way to a real pattern. One filter pass over a
+100000-line scrollback measured *53 ms* (2026-08-27) and *71 ms* on re-run; the
+suite asserts a 300 ms budget rather than a fixed number.
+
+An invalid half-typed pattern empties the list and puts the =regerror= text in the
+header — keeping the previous result set on screen would be a lie about what the
+pattern matches.
+
+* Measured tmux behaviours — four assumptions this effort falsified
+
+All on tmux 3.5a. Full statements in ADR-0005's =* Notes=; recorded here because
+each one had already been coded against before it was measured.
+
+1. =goto-line N= is *not* a line number — it sets =oy=, the scroll offset from the
+   bottom of history, leaving the cursor row alone. The row must be pinned with
+   =history-top= first.
+2. =oy= is *not* stable while a pane keeps printing; the index from the top of
+   history is. =history_size= is re-read at jump time, never reused from the capture.
+3. =search-forward= leaves the cursor one cell *past* the match end;
+   =search-backward= leaves it on the match *start*. The grab keys read the token
+   under the cursor, so only the backward form is usable.
+4. =#{copy_cursor_line}= truncates at the first wide character (=中文測試 aa999 尾巴=
+   comes back as =中=). Verification is positional
+   (=history_size - scroll_position + copy_cursor_y=), never textual.
+
+A fifth, not an assumption but a trap: both searches *wrap silently* on failure, so
+a bad landing does not report itself. Hence the post-jump self-check.
+
+* Verification
+
+#+begin_src bash
+bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh   # 13 assertions
+bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh   #  5 assertions
+#+end_src
+
+=verify-sift-jump.sh= asserts the arithmetic against hand-issued tmux commands;
+=verify-sift-live.sh= drives the real TUI with real keystrokes and asserts on the
+*target* pane, so it catches a mis-wiring the first script structurally cannot.
+
+*Do not remove the control case at the top of =verify-sift-jump.sh=.* =sift= finds
+its server through =$TMUX= like every other tool here, so a test that fails to point
+=$TMUX= at the throwaway socket does not fail — it silently measures, and drives,
+the user's real tmux server. That control case asserts the harness is aimed at the
+throwaway server before anything else runs.
+
+* Out of scope
+
+- ~prefix Space~ and =seek= itself — untouched; ADR-0001 still stands for plain search.
+- Searching anything but the current pane's scrollback (no cross-pane, no cross-window).
+- Alternate-screen panes: there is no scrollback to search, and the header says
+  =⚠ visible screen only= rather than pretending otherwise.
+- Perl regex syntax. Extended regex is what tmux uses; matching tmux is the point.
+- Replacing the popup with an in-tmux UI — the status line is one row and cannot
+  show a list, which is the reason a popup exists at all (ADR-0005, Decision Drivers).
+
+* Assets
+
+- [[file:assets/scripts/verify-sift-jump.sh][verify-sift-jump.sh]] — headless jump-arithmetic and regex-parity suite.
+- [[file:assets/scripts/verify-sift-live.sh][verify-sift-live.sh]] — real-keystroke e2e over a throwaway server, plus the filter-cost budget.
+- [[file:assets/scripts/sift-fixture.sh][sift-fixture.sh]] — the scrollback fixture both suites build on (ASCII, CJK, and known occurrence counts).
