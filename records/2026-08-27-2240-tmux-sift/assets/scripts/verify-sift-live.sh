@@ -81,6 +81,38 @@ echo "  matched $n lines in ${ms}ms"
 [ "$ms" -lt 300 ] && ok "one filter pass under 300ms (${ms}ms)" \
                   || bad "one filter pass under 300ms" "<300ms" "${ms}ms"
 
+echo "== 6. the REAL binding, driven by a real prefix keypress =="
+# The regression test for 2026-08-28: tests 1-4 launch sift in a window with the
+# pane id already substituted by the shell, so they never exercise the binding.
+# `display-popup` does NOT format-expand its shell-command, so a binding passing
+# `#{pane_id}` handed sift a literal string and the popup flashed shut — invisible
+# to every assertion above. This drives claude.conf's actual binding through a
+# nested client, the only way a real `prefix /` keystroke can be delivered.
+#
+# What it detects is the flash-and-close failure mode in general, NOT that one
+# cause: sift's origin_pane() now self-heals a literal `#{pane_id}`, so
+# reintroducing the old binding alone no longer reddens this. Verified to have
+# teeth by pointing the binding at a nonexistent pane (`sift %99999`), which
+# reproduces the same user-visible symptom and does fail here.
+O=sift_live_outer
+tmux -L $O kill-server 2>/dev/null
+tmux -L $O -f /dev/null new-session -d -x 282 -y 71
+OP=$(tmux -L $O display-message -p '#{pane_id}')
+tmux -L $O send-keys -t "$OP" "tmux -L $S attach" Enter
+sleep 1.5
+# Load the real config so the binding under test is the shipped one.
+t source-file "$HOME/.tmux/claude.conf" 2>/dev/null
+tmux -L $O send-keys -t "$OP" C-b; sleep 0.3
+tmux -L $O send-keys -t "$OP" /;   sleep 1.5
+screen=$(tmux -L $O capture-pane -p -t "$OP")
+case "$screen" in
+  *"regex>"*) ok "prefix / opens sift and it renders its prompt" ;;
+  *) bad "prefix / opens sift and it renders its prompt" "'regex>' on screen" \
+         "popup absent or closed immediately" ;;
+esac
+tmux -L $O send-keys -t "$OP" Escape; sleep 0.4
+tmux -L $O kill-server 2>/dev/null
+
 echo
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

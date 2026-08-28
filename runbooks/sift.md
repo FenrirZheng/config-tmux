@@ -21,6 +21,12 @@ match highlighted; `Enter` sends the pane to the one you picked.
 | `Enter` | jump the pane to the selected occurrence |
 | `Esc`, `C-g`, `C-c` | cancel — the pane is not touched |
 
+`sift` takes an optional pane id (`sift %5`); with none it searches the client's
+active pane, which is how the key binding uses it. That is not a convenience —
+a popup **cannot** be handed its pane through `#{pane_id}`, because
+`display-popup` does not expand formats in its command (nor in `-e`), and
+`$TMUX_PANE` inside a popup names the popup rather than the pane beneath it.
+
 After the jump the pane is **in copy-mode with the cursor on the match start**,
 and the pattern is registered with tmux itself, so `n` / `N` step to the next and
 previous match and seek's `w` / `W` / `l` / `L` grab keys chain from the landing
@@ -82,6 +88,20 @@ w               → seek grabs the token under the cursor
 ```
 
 ## Troubleshoot
+
+**`prefix /` flashes a popup that shuts instantly** — `sift` could not resolve
+which pane to search, so it exited. Almost always a binding that passes an
+argument: `display-popup` does **not** format-expand its `shell-command`, so
+`display-popup -E "sift '#{pane_id}'"` hands over those literal characters.
+The shipped binding passes *no* argument — `sift` asks tmux for the active pane
+itself. Check with:
+
+```bash
+tmux list-keys -T prefix | grep -E '^bind-key +-T prefix +/'
+```
+
+It should end in `.../release/sift` with nothing after it. Run
+`~/.tmux/tools/target/release/sift` from a normal pane to see the error directly.
 
 **`prefix /` prints "sift: not built"** — the guard is evaluated when the config
 is *loaded*, so building is not enough. Run `tmux source-file ~/.tmux.conf`.

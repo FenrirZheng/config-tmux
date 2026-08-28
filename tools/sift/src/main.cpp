@@ -7,7 +7,9 @@
 //   docs/adr/0005-own-the-interaction-loop-for-regex-search.org
 //
 // Usage:
-//   sift <pane-id>                  the popup TUI
+//   sift [pane-id]                  the popup TUI (pane defaults to the active
+//                                   one — see origin_pane() for why the binding
+//                                   cannot simply pass it in)
 //   sift rows <pane-id> <regex>     one line per match, no TUI — the seam every
 //                                   headless test asserts against, mirroring
 //                                   `cc-fleet rows`. Fields:
@@ -160,6 +162,30 @@ int utf8_cells(const std::string& s, size_t byte_end) {
         n += cell_width(cp);
     }
     return n;
+}
+
+// Which pane are we searching?
+//
+// The obvious answer — have the key binding pass `#{pane_id}` — does not work.
+// Measured on tmux 3.5a: `display-popup`'s shell-command is NOT format-expanded,
+// so the program receives the literal seven characters `#{pane_id}`; neither is
+// `-e VAR=#{pane_id}`. (`run-shell` does expand, which is what makes the
+// difference easy to miss.) And `$TMUX_PANE` inside a popup names the POPUP's
+// own pseudo-pane, not the pane it was opened over — using it would search the
+// wrong thing rather than fail loudly.
+//
+// What does work is asking tmux directly: while a popup is open the client's
+// active pane is still the one the key was pressed in.
+//
+// An explicit argument is honoured when given (the `rows` seam and the tests
+// rely on it) — except when it still looks like an unexpanded format, which
+// means a binding regressed and is better self-healed than flashed away.
+std::string origin_pane(const char* arg) {
+    if (arg && *arg && strncmp(arg, "#{", 2) != 0) return arg;
+    bool ok = false;
+    std::string s = tmux_out({"display-message", "-p", "#{pane_id}"}, &ok);
+    while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
+    return ok ? s : std::string();
 }
 
 // ── pane inspection ────────────────────────────────────────────────────────
@@ -762,12 +788,13 @@ int main(int argc, char** argv) {
             fprintf(stderr, "usage: sift rows <pane-id> <regex>\n");
             return 0;
         }
-        return run_rows(argv[2], argv[3]);
+        return run_rows(origin_pane(argv[2]), argv[3]);
     }
 
-    if (argc < 2) {
-        fprintf(stderr, "usage: sift <pane-id> | sift rows <pane-id> <regex>\n");
+    std::string pane = origin_pane(argc >= 2 ? argv[1] : nullptr);
+    if (pane.empty()) {
+        fprintf(stderr, "sift: no pane — run it inside tmux, or pass a pane id\n");
         return 0;
     }
-    return run_ui(argv[1]);
+    return run_ui(pane);
 }

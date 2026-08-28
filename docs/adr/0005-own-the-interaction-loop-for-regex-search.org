@@ -115,6 +115,16 @@ All measured on tmux 3.5a; probe scripts in
    seating the cursor past the target occurrence and searching back onto it.
 4. Both searches *wrap silently* when they fail, so a bad landing does not report
    itself. =sift= verifies where it landed and says so when it differs.
-5. =#{copy_cursor_line}= truncates at the first wide character — a line reading
+5. =display-popup= does *not* format-expand its =shell-command=, and neither does
+   its =-e VAR=value=. A binding written as =display-popup -E "sift '#{pane_id}'"=
+   hands the program those seven literal characters, and =sift= — unable to
+   resolve them — exits, so the popup flashes and shuts. =run-shell= *does*
+   expand, which is what makes the asymmetry easy to miss. Worse,
+   =$TMUX_PANE= inside a popup names the *popup's own* pseudo-pane, so reaching
+   for it searches the wrong pane instead of failing loudly. The only reliable
+   route is =tmux display-message -p '#{pane_id}'= from inside the popup, which
+   returns the client's active pane — the one the key was pressed in. Fixed
+   2026-08-28 in =origin_pane()=; the binding now passes no argument at all.
+6. =#{copy_cursor_line}= truncates at the first wide character — a line reading
    =中文測試 aa999 尾巴= comes back as =中=. Verification is therefore positional
    (=history_size - scroll_position + copy_cursor_y=), never textual.

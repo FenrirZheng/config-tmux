@@ -59,12 +59,27 @@ not enough, the config must be re-sourced:
 
 #+begin_src conf
 if-shell '[ -x ~/.tmux/tools/target/release/sift ]' {
-  bind -T prefix / display-popup -E -w 90% -h 70% -T ' regex ' \
-    "~/.tmux/tools/target/release/sift '#{pane_id}'"
+  bind -T prefix / display-popup -E -w 95% -h 90% -T ' regex ' \
+    "~/.tmux/tools/target/release/sift"
 } {
   bind -T prefix / display-message -l 'sift: not built — ...'
 }
 #+end_src
+
+Sized 95%/90% rather than the 90%/70% the other popups use (=prefix S=, the
+launch pickers): those are menus, this is a *result list*, so every extra row is
+one more match visible without paging. Measured on a 282x71 client: 90%/70% gave
+the program 251x47, 95%/90% gives 265x61 — =display-popup= hands over the box
+minus its border. Raised 2026-08-28 after the first size read as cramped in use.
+
+*No =#{pane_id}= argument.* It was there until 2026-08-28, when it turned out
+=display-popup= does not format-expand its shell-command (nor =-e=): =sift= got
+the literal string, could not resolve it, exited, and the popup flashed shut.
+=$TMUX_PANE= is not the answer either — inside a popup it names the popup. =sift=
+now asks tmux for the active pane itself (=origin_pane()=). The regression test
+is =verify-sift-live.sh= §6, which is the first one to drive the *real* binding
+with a *real* keypress; §1-4 substitute the pane id in the shell and so could
+never have caught it.
 
 The stub branch names the build command rather than failing silently. ~prefix /~
 still overrides tmux's stock =describe-key= prompt; key help stays on ~prefix ?~ /
