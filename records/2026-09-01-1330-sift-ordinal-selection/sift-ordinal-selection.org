@@ -56,3 +56,29 @@ verification suites, and documented where the other =sift= behaviour is document
   ADR-0007, not deferred.
 
 * Tickets
+
+** TODO Confirm Alt-digit survives a real keypress through alacritty :task:
+:PROPERTIES:
+:CUSTOM_ID: t1
+:ASSIGNEE:
+:BLOCKED_BY:
+:END:
+
+*** Question
+
+Every probe taken during the grill synthesised the keystroke with =tmux send-keys M-1=,
+never a physical key, so the =keyboard → alacritty → tmux= leg of the path is
+=[未驗証]=. =~/.config/alacritty/alacritty.toml= does not set =alt_send_esc=, so the
+claim currently rests on alacritty's documented default rather than on a measurement.
+
+This gates everything after it: if a physical Left =Alt-1= does not arrive as
+=0x1b 0x31=, ADR-0007's entry channel is wrong and the decision has to be reopened
+rather than implemented around.
+
+HITL — it needs a human to press the key. The cheapest observable that does not
+require touching the code: open =prefix /= on the real server, type a letter so the
+pattern is non-empty, press Left =Alt-1=, and report whether the popup stayed open
+(=ESC= arrived paired, correct) or closed (=ESC= arrived bare, channel unusable) —
+and then whether a following letter shows the digit leaked into the pattern.
+
+Record the observation in the Resolution either way, including the negative form.
