@@ -59,21 +59,27 @@ Two ordering constraints, both load-bearing:
 
 ** Crates
 
-Every crate below is Rust in the =tools/= cargo workspace *except =sift=*, which
-is C++ built by cmake. That divergence is a user directive, not a technical
-finding; the cost is a second build system in the bootstrap, and it is contained
-by having cmake write its binary into =target/release/= next to the cargo output
-so =claude.conf= keeps one path shape for every tool:
+Every crate below is Rust in the =tools/= cargo workspace, =sift= included.
+=sift= was C++ built by cmake, outside the workspace, from 2026-08-27 until it
+was ported to Rust on 2026-08-31 — [[file:../docs/adr/0006-port-sift-from-cpp-to-rust.org][ADR-0006]]. The divergence that ADR undoes was
+a user directive, not a technical finding; its cost was a second build system
+in the bootstrap and a =cargo clean= that silently deleted =sift='s binary
+along with the Rust ones (both shared =target/release/= so =claude.conf= could
+keep one path shape for every tool). One build now covers all of it:
 
 #+begin_src sh
 cd ~/.tmux/tools
 cargo build --release
-cmake -S sift -B target/cmake-build -DCMAKE_BUILD_TYPE=Release && cmake --build target/cmake-build
 #+end_src
 
-=sift= has no =tmuxlib=. The only pieces it had to re-implement on the C++ side
-are the =tmux= subprocess call and the literal-message helper; it spawns =tmux=
-through =execvp= with an argv vector, never a shell string.
+=sift= has no =tmuxlib=. The only pieces it had to re-implement are the =tmux=
+subprocess call and the literal-message helper; it spawns =tmux= through
+=std::process::Command= with an argv vector, never a shell string. Its regex
+engine is glibc =regcomp=/=regexec= (=REG_EXTENDED=) reached through raw
+=libc= FFI, not the =regex= crate — ADR-0006's reasoning is dialect fidelity:
+tmux performs the actual jump via its own POSIX-ERE =search-backward=, so
+sift's candidate list has to come from the identical engine or the two can
+disagree after a jump.
 
 
 | crate         | entry point                                    | plan                                                                            |
@@ -89,7 +95,7 @@ through =execvp= with an argv vector, never a shell string.
 | =talk-fleet=  | =role= / =bcast= / =collect=                   | talk-fleet-dispatch                                                             |
 | =cc-tape=     | =toggle= / =strip=                             | pane-tape                                                                       |
 | =seek=        | =word= / =line=, each with =--claude=          | [[../records/2026-08-09-1116-tmux-seek][records/2026-08-09-1116-tmux-seek]]    |
-| =sift=        | =<pane>= popup TUI / =rows= headless seam      | [[../docs/adr/0005-own-the-interaction-loop-for-regex-search.org][ADR-0005]] · [[../records/2026-08-27-2240-tmux-sift][records/2026-08-27-2240-tmux-sift]] |
+| =sift=        | =<pane>= popup TUI / =rows= headless seam      | [[../docs/adr/0005-own-the-interaction-loop-for-regex-search.org][ADR-0005]] · [[../docs/adr/0006-port-sift-from-cpp-to-rust.org][ADR-0006]] · [[../records/2026-08-27-2240-tmux-sift][records/2026-08-27-2240-tmux-sift]] |
 
 =seek= is the one crate whose design doc is not a file in [[../plans/][=plans/=]]: its specification is the wayfinder records directory above — read that map's *Current contract* section, which supersedes the tickets under it.
 

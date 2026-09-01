@@ -5,70 +5,117 @@
 
 * Summary
 
-=sift= is the popup regex search bound to =prefix /=, and the one thing in =tools/= that is not Rust: it is C++ built by cmake, which writes its binary into =target/release/= beside the cargo output so =claude.conf= keeps one path shape for every tool. It exists because tmux's incremental search is plain-text only, so the previous binding made you type a regex blind into a =command-prompt= and learn only on Enter whether it matched; =sift= owns the keystroke loop instead and lists every occurrence in the scrollback as you type. That is a deliberate narrowing of ADR-0001's "don't own the interaction loop" rule to plain search only — see ADR-0005.
+=sift= is the popup regex search bound to =prefix /=: a Rust crate in the =tools/= cargo workspace like every other tool here, since a 2026-08-31 port from C++/cmake (ADR-0006). It exists because tmux's incremental search is plain-text only, so the previous binding made you type a regex blind into a =command-prompt= and learn only on Enter whether it matched; =sift= owns the keystroke loop instead and lists every occurrence in the scrollback as you type. That is a deliberate narrowing of ADR-0001's "don't own the interaction loop" rule to plain search only — see ADR-0005.
 
 What it pointedly does *not* own is the jump. On Enter it seats the copy-mode cursor just past the chosen occurrence and then issues tmux's own =search-backward= with the same pattern, so *tmux* ends up holding the search and match highlighting, =n= / =N=, and seek's =w= / =W= / =l= / =L= grab keys all keep working unchanged. Almost every tmux command in that sequence misbehaves relative to its name — =goto-line= sets a scroll offset rather than a line number, and both searches wrap silently when they miss — so the jump ends by re-reading the cursor's coordinates and asserting where it landed rather than trusting the commands. The measured surprises are recorded in the source comments and in ADR-0005's Notes.
 
 A popup cannot be *told* which pane it belongs to, which is why =sift= takes no pane argument from its binding. =display-popup= does not format-expand its shell-command (nor its =-e=), so a binding passing =#{pane_id}= hands over those literal characters; and =$TMUX_PANE= inside a popup names the popup's own pseudo-pane, so it would search the wrong thing instead of failing. =origin_pane()= asks tmux for the client's active pane instead — the one the key was pressed in. Getting this wrong is invisible in a pane-based test: it shows up only as a popup that flashes and shuts.
 
-There is no =tmuxlib= on this side. The only pieces re-implemented in C++ are the =execvp=-based tmux spawn (an argv vector, never a shell string) and the literal =-l= message helper — which together are how =sift= discharges the same format-context proof obligation =seek= does: it stamps no pane options and renders pane text only into its own popup, so there is no format context to escape from and nothing has to be filtered. =sift rows <pane> <regex>= is the headless seam, mirroring =cc-fleet rows=; the behaviour above is pinned by =records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh= (13 assertions, including the jump arithmetic over CJK) and =verify-sift-live.sh= (6 assertions over real keystrokes, the last driving the shipped binding itself) — those are what redden if the sequence shifts.
+There is no =tmuxlib= on this side. The only pieces re-implemented are the =std::process::Command=-based tmux spawn (an argv vector, never a shell string) and the literal =-l= message helper — which together are how =sift= discharges the same format-context proof obligation =seek= does: it stamps no pane options and renders pane text only into its own popup, so there is no format context to escape from and nothing has to be filtered. Its regex engine is glibc =regcomp=/=regexec= (=REG_EXTENDED=) reached through raw =libc= FFI rather than the =regex= crate — ADR-0006's reasoning is dialect fidelity: tmux performs the actual jump via its own POSIX-ERE =search-backward=, so sift's candidate list has to come from the identical engine, matching leftmost-longest semantics, backreferences and =\<=/=\>=, and reading =\d= as a literal =d=, or the two can disagree after a jump. =sift rows <pane> <regex>= is the headless seam, mirroring =cc-fleet rows=; the behaviour above is pinned by =records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh= (13 assertions, including the jump arithmetic over CJK — measured unchanged across the Rust port) and =verify-sift-live.sh= (6 assertions over real keystrokes, the last driving the shipped binding itself) — those are what redden if the sequence shifts.
 
 * Crux
 
 =goto-line= is a scroll offset from the bottom of the history, not a line number, so the cursor row has to be pinned with =history-top= first; only then is =history_size - line= an exact seek. =history_size= is re-read here rather than reused from the capture, because it moves while the pane keeps printing:
 
-#+begin_src cpp :file sift/src/main.cpp :lines 297-306
-    std::vector<std::string> a = {"copy-mode", "-t", pane,
-                                  ";", "send-keys", "-X", "-t", pane, "history-top"};
+#+begin_src rust :file sift/src/main.rs :lines 606-634
+    let p = || OsString::from_vec(pane.to_vec());
+    let mut a: Vec<OsString> = vec![
+        OsString::from("copy-mode"),
+        OsString::from("-t"),
+        p(),
+        OsString::from(";"),
+        OsString::from("send-keys"),
+        OsString::from("-X"),
+        OsString::from("-t"),
+        p(),
+        OsString::from("history-top"),
+    ];
 
-    if (line <= now.history_size) {
-        a.insert(a.end(), {";", "send-keys", "-X", "-t", pane,
-                           "goto-line", std::to_string(now.history_size - line)});
+    let mut send = |args: &[OsString]| a.extend(args.iter().cloned());
+
+    if line <= now.history_size {
+        send(&[
+            OsString::from(";"),
+            OsString::from("send-keys"),
+            OsString::from("-X"),
+            OsString::from("-t"),
+            p(),
+            OsString::from("goto-line"),
+            OsString::from((now.history_size - line).to_string()),
+        ]);
     } else {
         // Target is in the visible screen: pin the viewport to the bottom and
         // step down to the row.
-        long down = line - now.history_size;
+        let down = line - now.history_size;
 #+end_src
 
 The chain-preserving step: the pattern is handed to tmux, which is what makes the highlight, =n= / =N= and seek's grab keys work afterwards. The whole sequence goes out as one command list while the popup is still up:
 
-#+begin_src cpp :file sift/src/main.cpp :lines 313-322
-    if (char_end > 0)
-        a.insert(a.end(), {";", "send-keys", "-X", "-N", std::to_string(char_end),
-                           "-t", pane, "cursor-right"});
+#+begin_src rust :file sift/src/main.rs :lines 658-688
+    // `cursor-right` counts CHARACTERS, which is why char_end — not byte_end,
+    // not cell_end — is the argument.
+    if char_end.0 > 0 {
+        send(&[
+            OsString::from(";"),
+            OsString::from("send-keys"),
+            OsString::from("-X"),
+            OsString::from("-N"),
+            OsString::from(char_end.0.to_string()),
+            OsString::from("-t"),
+            p(),
+            OsString::from("cursor-right"),
+        ]);
+    }
 
     // Registering the pattern with tmux is the point of this step, not just the
     // positioning: it is what makes the match highlight, `n`/`N`, and seek's
     // grab keys work afterwards.
-    a.insert(a.end(), {";", "send-keys", "-X", "-t", pane, "search-backward", pattern});
+    send(&[
+        OsString::from(";"),
+        OsString::from("send-keys"),
+        OsString::from("-X"),
+        OsString::from("-t"),
+        p(),
+        OsString::from("search-backward"),
+        OsString::from_vec(pattern.to_vec()),
+    ]);
 
-    if (!tmux_run(a)) return false;
+    if !tmux_run(&a) {
+        return false;
+    }
 #+end_src
 
 Verification is positional, never textual — =#{copy_cursor_line}= truncates at the first wide character, so comparing text would false-alarm on every CJK line. All five fields come from one =display-message= call so they describe one instant:
 
-#+begin_src cpp :file sift/src/main.cpp :lines 342-352
-    long f[5] = {0, 0, 0, 0, 0};
-    size_t start = 0;
-    for (int i = 0; i < 5; ++i) {
-        size_t tab = s.find('\t', start);
-        f[i] = strtol(s.substr(start, tab == std::string::npos ? std::string::npos
-                                                              : tab - start).c_str(), nullptr, 10);
-        if (tab == std::string::npos) break;
-        start = tab + 1;
+#+begin_src rust :file sift/src/main.rs :lines 702-718
+    let (s, ok) = tmux_out(&[
+        OsStr::new("display-message"),
+        OsStr::new("-p"),
+        OsStr::new("-t"),
+        os(pane),
+        OsStr::new(
+            "#{history_size}\t#{scroll_position}\t#{copy_cursor_y}\t#{copy_cursor_x}\t#{search_present}",
+        ),
+    ]);
+    if !ok {
+        return false;
     }
-    long landed = f[0] - f[1] + f[2];
-    return f[4] == 1 && landed == line && f[3] == cell_start;
+    let f = tab_fields::<5>(&s);
+    let landed = f[0] - f[1] + f[2];
+    // Note the asymmetry: the row is checked in LINE units, the column in CELL
+    // units, even though the cursor was moved with a CHARACTER count.
+    f[4] == 1 && landed == line && f[3] == cell_start.0 as i64
 #+end_src
 
 * Links
 
-- implements :: [[file:tmuxlib-lib.org][tmuxlib's single source file]] — honours the contract it cannot link against: the argv-vector tmux spawn and =message_literal='s =-l= discipline, re-implemented in C++
+- implements :: [[file:tmuxlib-lib.org][tmuxlib's single source file]] — honours the contract it cannot link against: the argv-vector tmux spawn and =message_literal='s =-l= discipline, re-implemented independently
+- decided by :: [[file:../../docs/adr/0006-port-sift-from-cpp-to-rust.org][ADR-0006]] — the language/build-system decision (C++/cmake → Rust/libc FFI) this node's source now reflects; ADR-0005 (linked above) is the unchanged architectural decision this node implements
 
 * Sources
 :SOURCES:
-:sift/src/main.cpp: sha256:7c275d7892b95efb9825f42d373e27e43cb2a916f86ea199a813687ffc3ee3bf
-:sift/CMakeLists.txt: sha256:5c493db5a172ceb3bdf80555bfb7b1ac62acaa90699006afb9901252454dbeba
+:sift/src/main.rs: sha256:6688048595ef6383a8e4f064c5716b148f3a3b76324a19e4ba3b615d806648fe
+:sift/Cargo.toml: sha256:e9d96e6a96b4b21b00988ec816e4120dda0734bed8f1b6c749f58b7e5bfa69ad
 :END:
 
 * Notes
