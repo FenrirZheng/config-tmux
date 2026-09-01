@@ -35,6 +35,8 @@ verification suites, and documented where the other =sift= behaviour is document
 
 * Decisions so far
 
+- [[#t1][Confirm Alt-digit survives a real keypress through alacritty]] — Left Alt-digit survives keyboard -> alacritty -> tmux -> sift intact as ESC+digit; ADR-0007's entry channel is confirmed on the C++ binary
+
 * Not yet specified
 
 - Whether the ordinal column's width should keep tracking the current /N/ (and so
@@ -57,11 +59,10 @@ verification suites, and documented where the other =sift= behaviour is document
 
 * Tickets
 
-** TODO Confirm Alt-digit survives a real keypress through alacritty :task:
+** DONE Confirm Alt-digit survives a real keypress through alacritty :task:
 :PROPERTIES:
 :CUSTOM_ID: t1
 :ASSIGNEE: fenrir@6c05db1f
-:CLAIMED_AT: 2026-09-01 14:05
 :BLOCKED_BY:
 :END:
 
@@ -83,3 +84,35 @@ pattern is non-empty, press Left =Alt-1=, and report whether the popup stayed op
 and then whether a following letter shows the digit leaked into the pattern.
 
 Record the observation in the Resolution either way, including the negative form.
+
+*** Resolution
+
+Confirmed, both legs, against the C++ =sift= binary that the 2026-09-01 revert of the
+Rust port restored (=tools/sift/src/main.cpp=, freshly built by =cmake --preset
+release=).
+
+*The physical leg — the one the grill left =[未驗證]=.* The user pressed a real left
+=Alt-1= inside the real =prefix /= popup on their own server, with a non-empty pattern:
+the popup *stayed open* and the following letter produced =regex> er=, never
+=regex> e1r=. So the =ESC= arrived paired rather than bare, and the digit did not leak
+into the pattern. Alacritty's Meta-as-ESC-prefix default holds on this machine as
+documented; =alacritty.toml= still sets no =alt_send_esc=.
+
+*The synthesised control, re-run in the same session on the same binary* — 3/3, via
+[[file:assets/scripts/probe-alt-digit-cpp.sh][probe-alt-digit-cpp.sh]] on a throwaway =-L= server: plain =e= reaches the pattern
+(positive control), =M-1= leaves the popup open, and a following =r= gives =regex> er=.
+The control is what makes the physical observation interpretable — a closed popup would
+otherwise be indistinguishable from a binary that mishandles =ESC=+digit.
+
+*Why the control had to be re-run rather than quoted.* The grill's measurement
+("=read_key= already decodes and discards") was taken against the Rust binary, which no
+longer exists. Read on the restored C++ source: =read_key()= reads =0x1b=, polls 40 ms
+for the next byte, and returns =Key::None= for anything that is not =[= or =O= — a
+digit included. Same behaviour, now measured on the substrate that will actually carry
+the implementation. Full finding: [[id:3ca38db9-4d7b-4cd4-a762-9fd90f67fb85][left Alt-digit reaches a tmux popup app as ESC plus digit]].
+
+*Consequence for ADR-0007:* the entry channel stands as decided — no reopen. The
+implementation hook is exactly the =c1= branch of =read_key()=: today a digit there
+falls into =Key::None=, and that is where ordinal-mode entry attaches.
+
+- review: settled live with user (physical keypress, 2026-09-01), plus probe-verified control on the C++ binary (3/3)
