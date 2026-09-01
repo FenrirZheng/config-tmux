@@ -1,0 +1,39 @@
+:PROPERTIES:
+:ID:       3ca38db9-4d7b-4cd4-a762-9fd90f67fb85
+:END:
+#+TITLE: left Alt-digit reaches a tmux popup app as ESC plus digit
+#+KB_FORMAT: atomic-kb/1
+
+On this machine a *physical* left =Alt-<digit>= arrives at a program running inside a
+=display-popup= as the two bytes =0x1b 0x3N= — the Meta-as-ESC-prefix default, not a
+bare =Esc= and not a stripped digit. Measured 2026-09-01 by a real keypress through
+alacritty → tmux → =sift=, with the synthesised =tmux send-keys M-1= form as the
+control in the same session; both legs agreed. =~/.config/alacritty/alacritty.toml=
+sets no =alt_send_esc=, so this is alacritty's documented default confirmed rather
+than assumed. Right Alt cannot be used at all: =~/.config/keyd/default.conf:40= binds
+=rightalt= to the fcitx5 IME toggle at the kernel level, so it never reaches tmux.
+
+* Notes
+
+Why it matters for a TUI that owns its keystroke loop: the pair is *free to
+repurpose*, because a byte-at-a-time decoder that treats =Esc= as cancel only does so
+when nothing follows within its timeout. =sift='s =read_key()=
+(=tools/sift/src/main.cpp=) reads =0x1b=, then polls 40 ms for the next byte; a
+following =[= or =O= starts a cursor-key sequence, and anything else — a digit
+included — returns =Key::None=, which the loop ignores. So today =Alt-1= is silently
+discarded: the popup stays open and the digit does not leak into the pattern.
+
+Observable form of the measurement, both legs:
+
+: type 'e'  → prompt reads "regex> e"
+: press left Alt-1
+:   popup still open   → the ESC arrived paired, not bare
+: type 'r'  → prompt reads "regex> er", never "regex> e1r"
+
+The negative signatures are worth keeping: a *closed* popup means the =Esc= arrived
+alone (the terminal did not prefix), and =regex> e1r= means the =Alt= was eaten and
+only the digit arrived. Either one makes an =Alt-<digit>= entry channel unusable, and
+neither can be told from a code bug without the synthesised control — which is why the
+control is run against the same binary in the same session, not quoted from an earlier
+one. The 2026-09-01 revert of =sift='s Rust port made that concrete: the original
+measurement had been taken against a binary that no longer exists.
