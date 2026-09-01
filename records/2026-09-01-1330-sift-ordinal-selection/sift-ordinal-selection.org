@@ -40,10 +40,31 @@ verification suites, and documented where the other =sift= behaviour is document
   =records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-{jump,live}.sh=. *Do
   not remove the control case at the top of =verify-sift-jump.sh=* — without it a
   misaimed =$TMUX= silently drives the user's real tmux server.
+- *Two pre-existing defects surfaced this run, neither introduced nor fixed by
+  t2-t4*: (1) =Home=/=End= have never worked in sift — tmux emits =ESC [ 1 ~= /
+  =ESC [ 4 ~=; sift's CSI decoder handles only =ESC [ H= / =ESC [ F=, so the
+  =default:= arm returns =Key::None= without consuming the trailing =~=, which then
+  lands in the pattern as printable text. Measured directly with =cat -v= on a
+  throwaway server, and again live (=send-keys End= produced =regex> hitline~=). It
+  is why =sync_ordinal()= on =Key::Home=/=Key::End= is dead in practice, and why
+  [[#t3][t3]] could not assert those two movers; =runbooks/sift.md='s key table now
+  says so ("do not work — see Troubleshoot"). A candidate for its own ticket. (2)
+  =tools/atlas/sift.org= carries 4 Crux excerpts where the atlas format contract
+  states <=3 — pre-existing, predates this effort, flagged rather than silently
+  restructured.
 
 * Decisions so far
 
 - [[#t1][Confirm Alt-digit survives a real keypress through alacritty]] — Left Alt-digit survives keyboard -> alacritty -> tmux -> sift intact as ESC+digit; ADR-0007's entry channel is confirmed on the C++ binary
+- [[#t2][Build ordinal mode into the C++ sift]] — ordinal column + goto-mode built in
+  =tools/sift/src/main.cpp= (+157/-9); an independent verifier's footer-width regression
+  was found and fixed; atlas node re-anchored in the same change
+- [[#t3][Assert ordinal mode in the verification suites]] — 11 new assertions (live 6/0
+  -> 17/0, jump unchanged 13/0), proven capable of failing via a pre-ordinal negative
+  control (11/11 fail, 19/19 pre-existing pass)
+- [[#t4][Document ordinal mode where the rest of sift is documented]] — runbook updated
+  and validated by a use-node reaching ground truth from the doc alone; two real
+  documentation gaps recorded, not closed
 
 * Not yet specified
 
@@ -125,10 +146,10 @@ falls into =Key::None=, and that is where ordinal-mode entry attaches.
 
 - review: settled live with user (physical keypress, 2026-09-01), plus probe-verified control on the C++ binary (3/3)
 
-** TODO Build ordinal mode into the C++ sift :task:
+** DONE Build ordinal mode into the C++ sift :task:
 :PROPERTIES:
 :CUSTOM_ID: t2
-:ASSIGNEE:
+:ASSIGNEE: fenrir@graphrun-1502
 :BLOCKED_BY:
 :END:
 
@@ -162,10 +183,88 @@ Per the map's Notes, the atlas node =tools/atlas/sift.org= is updated in this sa
 change — including its =:lines= source excerpts, which the Rust revert already made
 stale.
 
-** TODO Assert ordinal mode in the verification suites :task:
+*** Resolution
+
+Built in =tools/sift/src/main.cpp= in two slices — the always-rendered ordinal column,
+then the mode itself. Final diff *+157 / -9*, one file.
+
+- Row layout is now ="> "= (2) + ordinal (=ordw=) + space + line number (=numw=) + space
+  + text, so the text field is =textw = w - numw - ordw - 4= (was =w - numw - 3=). The
+  ordinal renders cyan, the line number stays dim, so the two are distinguishable at a
+  glance. =ordw= is recomputed every =draw()= from =u.hits.size()=, so the column
+  jitters with /N/ exactly as ADR-0007 records and accepts — nothing pins it.
+- Entry is the =c1= branch of =read_key()=, as [[#t1][t1]] predicted: =ESC= +
+  ='0'..'9'= now returns a new =Key::AltDigit= carrying the digit, where it previously
+  fell into =Key::None=. The 40 ms =ESC_SEQ_MS= window is untouched.
+- =Ui::goto_buf= is the entire mode state — non-empty *is* the mode, so there is no
+  separate flag that could drift out of sync. Helpers: =in_ordinal_mode=,
+  =ordinal_of=, =push_ordinal_digit=, =sync_ordinal=. One bounds check in
+  =push_ordinal_digit= implements all four refusals at once: out-of-range, =Alt-0=,
+  empty list, invalid pattern.
+- =draw()= selects the live prompt (=goto> = / =regex> =), recomputes =plen= from it,
+  and parks the cursor at the end of whatever is being typed. Measured =cursor_x=: 14
+  for =regex> hitline=, 7 for =goto> 1=, 8 for =goto> 12=.
+- =jump()=, =run_rows()=, =refilter()= and =render_line()= untouched. =sift rows= gains
+  nothing, as ADR-0007 says it should not.
+- Build: =cmake --preset release=, *zero warnings* under
+  =-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wold-style-cast -Wshadow=.
+- Suites unmoved by the implementation: *jump 13/0, live 6/0* before and after.
+- =tools/atlas/sift.org= updated in the same change, as the map's Notes require: all
+  four Crux =:lines:= excerpts re-anchored (449-459 -> 465-475, 465-473 -> 481-489,
+  492-494 -> 508-510, =parse_fields<N>= unchanged at 220-231) and verified
+  byte-for-byte against the file; the =main.cpp= sha256 in =:SOURCES:= recomputed.
+
+*Three decisions taken beyond ADR-0007's literal text* — recorded explicitly, since a
+future reader cannot derive them from the ADR:
+
+1. *The invariant extended to every mover.* ADR-0007 names only the arrow keys as
+   rewriting the buffer, but its stated invariant — "=goto>= always names where the
+   cursor actually is" — does not hold unless every mover does, so =sync_ordinal()= is
+   called from =Up=, =Down=, =Home=, =End= and the =PgUp=/=PgDn= block.
+2. *=C-w= / =C-u= clear the buffer before touching the pattern.* The ADR does not name
+   them. Chosen over ignoring them so the load-bearing property "no exit from the mode
+   happens after the pattern changes" stays true — both call =refilter()=.
+3. *=Alt-<digit>= pressed while already in the mode extends the buffer*, exactly like
+   a bare digit, rather than restarting it.
+
+*A blocking regression was found by an independent verifier and fixed* — the most
+useful finding in this ticket:
+
+The new footer (=↑↓ select  left-Alt-digit goto  Enter jump  Esc cancel  C-w word  C-u
+clear=) is 75 display cells, up from 54, and =draw()= emitted it with *no width guard
+at all*. =draw()= is contracted to emit exactly =h= lines — header + =h-2= rows +
+footer — so at any sift width <= 74 the footer wrapped, the pane scrolled, and the
+*header went off the top of the screen*, taking the =goto>= prompt and the match count
+with it. The user would be in a mode with no on-screen evidence of it.
+=claude.conf:207= sizes the popup at =-w 95%=, so any tmux client narrower than ~81
+columns was affected; the user's own 282-column client was not. It contradicted
+ADR-0007's settled "the mode is never invisible", so it blocked.
+
+Fixed by a new =utf8_fit(std::string_view, int budget)= — the forward inverse of the
+existing =utf8_cells=, built from the same decoder, cutting on a character boundary;
+=kDim=/=kReset= are zero-width and are neither charged against the budget nor cut. The
+footer /text/ is unchanged, so ADR-0007's "left Alt" wording and every doc quoting the
+footer still match the binary.
+
+Verified by a width sweep at w = 20, 30, 40, 60, 74, 75, 100, 265 — *8/8 pass*; and the
+sweep was shown to have teeth by running it against an unguarded control binary
+differing only in the reverted guard line: *5/8 FAIL*, at exactly the predicted w=75
+boundary. Worth saying plainly: the verifier's behavioural lens passed *25/25 at 100
+columns* while the feature was invisible at 74. Only a lens aimed at "can the user
+actually see the number" caught it.
+
+The independent verifier walked all 25 of ADR-0007's settled decisions with pasted
+evidence from the running binary: 23 implemented, 1 out-of-scope (the ordinal column
+width question — see Not yet specified), 1 blocking (the footer, now fixed), plus the
+docs gap that [[#t4][t4]] then closed.
+
+- review: independent verifier (25 decisions, pasted captures) + orchestrator
+  re-verification of every node against its on-disk artifacts
+
+** DONE Assert ordinal mode in the verification suites :task:
 :PROPERTIES:
 :CUSTOM_ID: t3
-:ASSIGNEE:
+:ASSIGNEE: fenrir@graphrun-1502
 :BLOCKED_BY: t2
 :END:
 
@@ -192,10 +291,64 @@ re-proving per-assertion.
 Resolution records the new pass counts for both suites, replacing the 13/0 and 6/0 the
 runbook and the atlas node quote.
 
-** TODO Document ordinal mode where the rest of sift is documented :task:
+*** Resolution
+
+=records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh= gains *11
+assertions* in three new sections: section 6 mode mechanics (7), section 7 =Enter= on
+the TARGET pane (3), section 8 the narrow pane (1). The pre-existing real-binding
+section moved 6 -> 9 deliberately — it attaches a 282x71 client to the throwaway
+server, which would resize the sessions section 8 depends on.
+
+*New counts: jump 13/0, live 17/0* — replacing the 13/0 and 6/0 that the runbook and
+the atlas node quoted (both now updated to 13 / 17, and the sanitizer section's "19
+assertions" to 30).
+
+=verify-sift-jump.sh= gains nothing, with a stated reason: ADR-0007 leaves =sift rows=
+untouched, so the k-th-row-is-ordinal-k mapping is a property of the already-pinned row
+ordering rather than of ordinal mode, and an assertion over it would pass identically
+against a pre-ordinal binary — vacuous by construction. Its control case ("harness
+targets the throwaway server") is intact.
+
+*The acceptance criterion was a negative control, not a green bar.* A pre-ordinal
+binary was built from =git show HEAD:tools/sift/src/main.cpp= (confirmed pre-ordinal by
+=grep -c goto_buf= -> 0) and both suites run against it: *11/11 new assertions FAIL,
+19/19 pre-existing pass*. Against the real binary: 17/0 and 13/0. Every new assertion is
+therefore shown capable of both failing and passing, per-assertion.
+
+*Two assertions that looked fine and were not — both caught only by the control:*
+
+1. The first =Backspace= assertion (one-digit buffer, two pops) *passed against the
+   pre-ordinal baseline by coincidence*: with a stale trailing digit in the pattern, a
+   plain pattern-delete produced byte-identical strings to the ordinal semantics.
+   Rewritten to drive a two-digit buffer through three pops asserting three distinct
+   states.
+2. *The default-selection trap.* =refilter()= seats the selection on the last hit, so
+   ordinal 12 of /N/=12 *is* the default — a build whose =push_ordinal_digit= was a
+   no-op would still land there. Found by the use-node ([[#t4][t4]]), which noticed the
+   match was already selected before it pressed anything. Section 7's discriminator is
+   now ordinal *5*: column 13 on =row191=, differing from the default on *both* the
+   column and the line axis. The control shows the trap concretely — the pre-ordinal
+   binary lands on =19|1|1|row193 ...=, i.e. exactly the default. Note for the future:
+   any edit changing the fixture's /N/ or the hit order must re-derive a non-default
+   ordinal rather than reuse 12.
+
+Only structural fields are compared — the column and the matched line's text. The
+absolute scrollback index (193 vs 195 across servers) is volatile and never asserted
+for equality. The N=12 fixture pattern =[abc][abc]19[0-3]= is re-measured at runtime
+with a fail-closed guard if it drifts, and it spans 4 lines x 3 occurrences, so an
+ordinal is provably not a line number.
+
+*UNASSERTED, recorded rather than dropped*: =Home=/=End= as movers — both keys have
+never worked in sift (see Notes). The mover assertion covers
+=Down=/=C-n=/=PgDn=/=Up=/=C-p=/=PgUp= instead, with the exclusion written into the
+suite as a comment beside it.
+
+- review: negative control against a pre-ordinal binary, 11/11 fail and 19/19 pass
+
+** DONE Document ordinal mode where the rest of sift is documented :task:
 :PROPERTIES:
 :CUSTOM_ID: t4
-:ASSIGNEE:
+:ASSIGNEE: fenrir@graphrun-1502
 :BLOCKED_BY: t2
 :END:
 
@@ -214,3 +367,36 @@ misleading.
 
 Out of scope, as charted: the missing =Sift= entry in =CONTEXT.org= — a real gap that
 predates this effort.
+
+*** Resolution
+
+=runbooks/sift.md=: the key table gains a =left Alt-<digit>= row pointing at a new
+*Ordinal mode* sub-table covering entry and its three refusals, digit extension and
+the silent out-of-range refusal, the movers rewriting the buffer, =Backspace= popping
+and the last pop leaving the mode, =C-w=/=C-u= clearing the buffer first,
+=Alt-<digit>= extending while already in the mode, the non-digit fallthrough, =Esc=
+leaving the mode, and =Enter= unchanged. The =goto>= prompt is explained as the sole
+in-popup indicator that the mode is live, with the match count still on the right.
+Counts updated to 13 / 17 / 30.
+
+*The decision this ticket asks to record.* The footer says =left-Alt-digit goto= —
+"left" specifically, because =~/.config/keyd/default.conf:40= gives =rightalt= to the
+fcitx5 IME toggle at the kernel level, so a footer saying only "Alt" would mislead a
+reader who tries the right-hand key. The =goto>= prompt is the only in-popup
+indicator; *no further indicator was invented*, because the map defers that question
+on purpose (see Not yet specified). That deferral stays untouched.
+
+*Validated by use, not by inspection.* A fresh agent was given /only/
+=runbooks/sift.md= — no source, no ADR, no suites — and told to reach the 12th of 12
+matches. It used =M-1= =2= =Enter=, derived from the runbook alone, and landed on
+=cc193= at column 19, matching ground truth computed independently beforehand from
+=sift rows=. It also reported two real gaps, which are *not* closed and are recorded
+rather than dropped:
+
+- the runbook documents the popup case only, so launching =sift %0= interactively from
+  a different window leaves it unstated which pane holds the resulting copy-mode state;
+- the key table does not say whether bare-digit buffering has any inter-keystroke
+  timing sensitivity.
+
+- review: use-node given the runbook alone, landed on independently-computed ground
+  truth

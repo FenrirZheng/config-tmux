@@ -13,13 +13,15 @@ A popup cannot be *told* which pane it belongs to, which is why =sift= takes no 
 
 The C++ is C++20 and dependency-free, and holds itself to a shape worth knowing before opening the file: every OS resource — the tmux pipe, the compiled regex, the terminal's raw mode — is owned by an RAII type (=Fd=, =Regex=, =RawMode=), so no exit path releases anything by hand and there is no =atexit=; fallible lookups return =std::optional= rather than taking a =bool* ok=; reader parameters are =std::string_view=; and the UTF-8 decoder is =constexpr= and carries its own unit tests as =static_assert=, so the byte/character/cell confusion this tool exists to avoid fails the *build* rather than the pane. The tmux command list is assembled by a concept-constrained variadic =chain()= that owns the =;= separator. =CMakeLists.txt= holds the source to =-Wconversion -Wsign-conversion -Wold-style-cast -Wshadow= on top of =-Wall -Wextra -Wpedantic=, and the =asan= preset builds an ASan+UBSan twin named =sift-asan= — a different name on purpose, because it shares =target/release/= with the binary =prefix /= runs. Both builds go through =CMakePresets.json= (=cmake --preset release= / =--preset asan=), which pins the Ninja generator and the build directory. Ninja is chosen for the no-op rebuild (16 ms against make's 56 ms), not for compile speed: one translation unit gives a build scheduler nothing to parallelise, and a full build measures the same either way.
 
-There is no =tmuxlib= on this side. The only pieces re-implemented in C++ are the =execvp=-based tmux spawn (an argv vector, never a shell string) and the literal =-l= message helper — which together are how =sift= discharges the same format-context proof obligation =seek= does: it stamps no pane options and renders pane text only into its own popup, so there is no format context to escape from and nothing has to be filtered. =sift rows <pane> <regex>= is the headless seam, mirroring =cc-fleet rows=; the behaviour above is pinned by =records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh= (13 assertions, including the jump arithmetic over CJK) and =verify-sift-live.sh= (6 assertions over real keystrokes, the last driving the shipped binding itself) — those are what redden if the sequence shifts.
+ADR-0007 gave the keystroke loop its first mode: left =Alt-<digit>= claims a match by its ordinal in the result list instead of walking arrows O(N) times. The entry key was free to claim because those bytes were already being decoded and discarded — =read_key()='s =ESC= branch fell through to =Key::None= for any byte that wasn't =[= or =O=, so teaching it =Alt-<digit>= added a case, not a new read. The whole mode lives in one field, =Ui::goto_buf=: non-empty *is* ordinal mode, so there is no separate flag that could drift out of sync with it. Buffer and selection are kept as one object — every digit narrows =u.sel= immediately (=push_ordinal_digit=), and every key that moves the selection rewrites the buffer from it (=sync_ordinal=) — so =Enter= confirms an ordinal already on screen rather than wagering on one that might not exist, and there is no "no such match" error path to write. =draw()= grew a cyan ordinal column that renders always, at the width of the current /N/, left of the still-dim line-number column, and it now swaps its live prompt between =regex>= and =goto>= so the mode is never invisible. That prompt swap is also why =draw()= grew a footer-width guard: the function is contracted to emit exactly =h= lines, so a footer one cell over the pane width wraps, scrolls the pane, and carries the header — the =goto>= prompt included — off the top of the screen. =utf8_fit()= is the forward inverse of =utf8_cells()=, cutting the footer string on a character boundary rather than a byte one.
+
+There is no =tmuxlib= on this side. The only pieces re-implemented in C++ are the =execvp=-based tmux spawn (an argv vector, never a shell string) and the literal =-l= message helper — which together are how =sift= discharges the same format-context proof obligation =seek= does: it stamps no pane options and renders pane text only into its own popup, so there is no format context to escape from and nothing has to be filtered. =sift rows <pane> <regex>= is the headless seam, mirroring =cc-fleet rows=; the behaviour above is pinned by =records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh= (13 assertions, including the jump arithmetic over CJK) and =verify-sift-live.sh= (17 assertions over real keystrokes, the last driving the shipped binding itself) — those are what redden if the sequence shifts.
 
 * Crux
 
 =goto-line= is a scroll offset from the bottom of the history, not a line number, so the cursor row has to be pinned with =history-top= first; only then is =history_size - line= an exact seek. =history_size= is re-read here rather than reused from the capture, because it moves while the pane keeps printing:
 
-#+begin_src cpp :file sift/src/main.cpp :lines 449-459
+#+begin_src cpp :file sift/src/main.cpp :lines 465-475
     std::vector<std::string> cmds;
     chain(cmds, "copy-mode", "-t", pane);
     chain(cmds, "send-keys", "-X", "-t", pane, "history-top");
@@ -35,7 +37,7 @@ There is no =tmuxlib= on this side. The only pieces re-implemented in C++ are th
 
 The chain-preserving step: the pattern is handed to tmux, which is what makes the highlight, =n= / =N= and seek's grab keys work afterwards. The whole sequence goes out as one command list while the popup is still up:
 
-#+begin_src cpp :file sift/src/main.cpp :lines 465-473
+#+begin_src cpp :file sift/src/main.cpp :lines 481-489
     if (char_end > 0)
         chain(cmds, "send-keys", "-X", "-N", std::to_string(char_end), "-t", pane, "cursor-right");
 
@@ -49,7 +51,7 @@ The chain-preserving step: the pattern is handed to tmux, which is what makes th
 
 Verification is positional, never textual — =#{copy_cursor_line}= truncates at the first wide character, so comparing text would false-alarm on every CJK line. All five fields come from one =display-message= call so they describe one instant:
 
-#+begin_src cpp :file sift/src/main.cpp :lines 492-494
+#+begin_src cpp :file sift/src/main.cpp :lines 508-510
     const auto f      = parse_fields<5>(*s);
     const long landed = f[0] - f[1] + f[2];
     return f[4] == 1 && landed == line && f[3] == cell_start;
@@ -78,7 +80,7 @@ std::array<long, N> parse_fields(std::string_view s) {
 
 * Sources
 :SOURCES:
-:sift/src/main.cpp: sha256:5677321aa1bd9a5746e59c9c2112c68e43d3850fa43f8d8c0c3d6c54d2895663
+:sift/src/main.cpp: sha256:1dd6902ec19e05bd2ccae4bf491e25cf85ee3960ca382f002d216aba1f8ab0b1
 :sift/CMakeLists.txt: sha256:23d7c42484e7ba32b11e5c926d17faf8995bfd55ac14d115ad1c0872d4d9c41c
 :sift/CMakePresets.json: sha256:a02d8e56b730a2a8179efbf0846261942716f54e7af8845f54b6f6802f87bad5
 :END:

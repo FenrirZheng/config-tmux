@@ -16,10 +16,39 @@ match highlighted; `Enter` sends the pane to the one you picked.
 |---|---|
 | any character | extends the pattern; the list refilters |
 | `↑` / `↓`, `C-p` / `C-n` | move the selection |
-| `PgUp` / `PgDn`, `Home` / `End` | page, or jump to the first / last match |
+| `PgUp` / `PgDn` | page |
+| `Home` / `End` | **do not work** — see Troubleshoot |
 | `Backspace`, `C-w`, `C-u` | delete a character / a word / the whole pattern |
+| left `Alt-<digit>` | enter **ordinal mode**, see below |
 | `Enter` | jump the pane to the selected occurrence |
 | `Esc`, `C-g`, `C-c` | cancel — the pane is not touched |
+
+### Ordinal mode — pick a match by number
+
+Every row carries an ordinal, its position in the current result set (1..*N*).
+Left `Alt-<digit>` enters **ordinal mode**, and the keypress is itself the
+first digit; the mode is the fastest way to reach an arbitrary candidate
+without walking the list one row at a time. Right Alt does **not** work for
+this — `~/.config/keyd/default.conf:40` gives `rightalt` to the fcitx5 IME
+toggle at the kernel level, so it never reaches tmux on this machine, and the
+footer names "left Alt" specifically for that reason.
+
+| key (while in ordinal mode) | does |
+|---|---|
+| left `Alt-<digit>` | enters the mode; that digit is the first buffered digit. Ignored on `Alt-0`, on an empty list, or on an invalid pattern — none of those names a candidate |
+| bare digit | extends the buffer; a digit that would push the ordinal past *N* is simply not buffered — there is no error to see |
+| left `Alt-<digit>` (already in the mode) | extends the buffer exactly like a bare digit |
+| `↑` / `↓`, `C-p` / `C-n`, `PgUp` / `PgDn` | move the selection **and rewrite the buffer**, so the prompt always names where the cursor actually is |
+| `Backspace` | pops one digit; popping the last digit leaves the mode. The *next* `Backspace` is the one that starts deleting the pattern |
+| `C-w` / `C-u` | clear the buffer first, before touching the pattern |
+| any other non-digit printable | leaves the mode and lands in the pattern |
+| `Esc` | leaves the mode (outside the mode it still cancels sift) |
+| `Enter` | jumps, unchanged |
+
+While the mode is live the prompt reads `goto>` instead of `regex>` and shows
+the buffered digits; the right-hand status keeps showing the match count, so
+*N* stays on screen. **The `goto>` prompt is the only indicator that the mode
+is live** — there is no separate in-popup marker beyond it.
 
 `sift` takes an optional pane id (`sift %5`); with none it searches the client's
 active pane, which is how the key binding uses it. That is not a convenience —
@@ -87,7 +116,7 @@ Two things worth knowing about where the build output goes:
 
 ```bash
 bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh   # 13 assertions
-bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh   #  6 assertions
+bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh   # 17 assertions
 ```
 
 Both spin up a throwaway tmux server and clean it up. `verify-sift-jump.sh`
@@ -97,7 +126,7 @@ target pane, so it would catch a wrong wiring that the first script cannot.
 
 ### Under the sanitizers
 
-Both scripts honour `$SIFT`, so the same 19 assertions can be re-run against an
+Both scripts honour `$SIFT`, so the same 30 assertions can be re-run against an
 ASan + UBSan + LSan build. The sanitizer target is deliberately named
 `sift-asan`: it shares the output directory with the release binary, and an
 instrumented binary silently taking over `prefix /` would be a slow, confusing
@@ -167,6 +196,13 @@ match of the same pattern, just not the one that was picked. Re-run the search.
 which is what tmux's own search uses. Perl-isms are not available: `\d`, `\w`,
 `\s` and lazy quantifiers are not extended-regex syntax. Use `[0-9]`, `[[:alnum:]_]`,
 `[[:space:]]`.
+
+**`Home` / `End` do nothing, or leak a `~` into the pattern** — this is a known,
+pre-existing defect, **not caused by ordinal mode and not fixed here**. tmux
+emits `ESC [ 1 ~` for `Home` and `ESC [ 4 ~` for `End`, but sift's CSI decoder
+only handles `ESC [ H` and `ESC [ F`; the key is dropped and its trailing `~`
+lands in the pattern as ordinary text. Use `PgUp` / `PgDn` or `↑` / `↓` /
+`C-p` / `C-n` instead.
 
 **The header says `⚠ visible screen only`** — the pane is on the alternate
 screen; there is no scrollback to search. Leave the full-screen program first.

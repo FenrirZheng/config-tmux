@@ -307,6 +307,22 @@ static_assert(utf8_chars("中文 aa", 9) == 5);   // 中 文 SP a a
     return n;
 }
 
+// Inverse of utf8_cells: the byte length of the longest prefix of `s` that
+// fits in `budget` cells. Same decoder and same width table, walked forwards
+// until the budget runs out, so the cut always lands on a character boundary —
+// a byte-boundary cut would emit half of a `↑`.
+[[nodiscard]] size_t utf8_fit(std::string_view s, int budget) {
+    size_t i = 0;
+    for (int n = 0; i < s.size();) {
+        const auto d = utf8_decode(s, i);
+        const int  w = cell_width(d.cp);
+        if (n + w > budget) break;
+        n += w;
+        i += static_cast<size_t>(d.len);
+    }
+    return i;
+}
+
 // Which pane are we searching?
 //
 // The obvious answer — have the key binding pass `#{pane_id}` — does not work.
@@ -567,7 +583,8 @@ struct TermSize {
 // ── key decoding ───────────────────────────────────────────────────────────
 
 enum class Key {
-    None, Enter, Esc, Backspace, Up, Down, PgUp, PgDn, Home, End, KillWord, KillLine, Text
+    None, Enter, Esc, Backspace, Up, Down, PgUp, PgDn, Home, End, KillWord, KillLine, Text,
+    AltDigit   // ESC + '0'..'9', i.e. left Alt-<digit> — ordinal mode (ADR-0007)
 };
 
 struct Input {
@@ -610,6 +627,13 @@ Input read_key() {
         // brief window to arrive.
         const int c1 = read_byte(40);
         if (c1 < 0) return key_only(Key::Esc);
+        // ESC followed by a digit is left Alt-<digit> — alacritty's
+        // Meta-as-ESC-prefix default, measured on this machine through a real
+        // keypress. ADR-0007 claims those bytes for ordinal mode; until now
+        // they fell through to Key::None below and were discarded. The 40 ms
+        // window above is still the only thing separating this from a bare Esc.
+        if (c1 >= '0' && c1 <= '9')
+            return Input{.key = Key::AltDigit, .text = std::string(1, static_cast<char>(c1))};
         if (c1 != '[' && c1 != 'O') return key_only(Key::None);
         const int c2 = read_byte(40);
         if (c2 < 0) return key_only(Key::Esc);
@@ -653,6 +677,11 @@ constexpr std::string_view kUnbold      = "\x1b[22m";
 constexpr std::string_view kReset       = "\x1b[0m";
 constexpr std::string_view kInvertOn    = "\x1b[7m";
 constexpr std::string_view kInvertOff   = "\x1b[27m";
+// The ordinal column is the one number the user types (ADR-0007), so it is
+// coloured rather than dimmed — a second dim number beside the line number
+// would be indistinguishable from it at a glance.
+constexpr std::string_view kCyan        = "\x1b[36m";
+constexpr std::string_view kDefaultFg   = "\x1b[39m";
 
 // Render one capture line into `width` cells, guaranteeing the match is on
 // screen (long lines scroll horizontally so a hit at column 400 is still seen)
@@ -708,6 +737,7 @@ struct Ui {
     size_t                   top    = 0;   // first visible hit
     bool                     capped = false;
     std::string              re_error;     // non-empty == the pattern does not compile
+    std::string              goto_buf;     // non-empty == ordinal mode is live (ADR-0007)
 };
 
 void refilter(Ui& u) {
@@ -730,6 +760,56 @@ void refilter(Ui& u) {
     // bias as the search-backward binding this replaces.
     u.sel = u.hits.empty() ? 0 : u.hits.size() - 1;
     u.top = 0;
+}
+
+// ── ordinal mode ───────────────────────────────────────────────────────────
+//
+// The buffer and the selection are ONE object (ADR-0007): u.goto_buf holds the
+// digits typed so far and u.sel is always that ordinal minus one, so Enter
+// confirms something already on screen rather than wagering on a number. A
+// non-empty buffer IS the mode — no second flag, because the mode is entered
+// with its first digit already in hand and leaves the instant the last one is
+// popped.
+//
+// Load-bearing, not incidental: every exit from the mode happens BEFORE the
+// pattern can change, so refilter() can never run while a buffer is alive and
+// the ordinals it names are frozen for the whole life of that buffer. That is
+// what removes the "no such match" error path — keep it true of any key added
+// later.
+
+[[nodiscard]] bool in_ordinal_mode(const Ui& u) noexcept { return !u.goto_buf.empty(); }
+
+// The 1-based ordinal a digit buffer names. Every digit in the buffer was
+// bounds-checked against u.hits.size() (<= kMatchCap, so at most five digits)
+// before it was appended, which is why this needs no overflow guard.
+[[nodiscard]] size_t ordinal_of(std::string_view digits) noexcept {
+    size_t v = 0;
+    for (const char c : digits) v = v * 10 + static_cast<size_t>(c - '0');
+    return v;
+}
+
+// Start or extend the buffer with one digit. A keystroke that would push the
+// ordinal past N is NOT buffered — buffer and selection are left exactly as
+// they were, and there is no error to render. With N = 12, `Alt-1` then `2`
+// reaches 12 (1 and 12 are both in range) while `Alt-1` then `5` stays on 1.
+// Ordinal 0 is the same refusal: `Alt-0` names no candidate, and neither does
+// an empty list or a pattern that does not compile.
+void push_ordinal_digit(Ui& u, char digit) {
+    if (u.hits.empty() || !u.re_error.empty()) return;
+    std::string next = u.goto_buf;
+    next.push_back(digit);
+    const size_t ord = ordinal_of(next);
+    if (ord == 0 || ord > u.hits.size()) return;
+    u.goto_buf = std::move(next);
+    u.sel      = ord - 1;
+}
+
+// Every key that MOVES the selection rewrites the buffer to the new selection's
+// ordinal, so `goto>` always names where the cursor actually is. ADR-0007
+// states that invariant for the arrow keys; it only holds if PgUp/PgDn and
+// Home/End keep it too.
+void sync_ordinal(Ui& u) {
+    if (in_ordinal_mode(u)) u.goto_buf = std::to_string(u.sel + 1);
 }
 
 void draw(Ui& u) {
@@ -755,9 +835,16 @@ void draw(Ui& u) {
                                           (u.capped ? "+ matches (capped)" : " matches");
     if (u.geom.alternate) status = "⚠ visible screen only · " + status;
 
-    const int plen = 7 + utf8_chars(u.pattern, u.pattern.size());
+    // The prompt names the live mode, so ordinal mode is never invisible. plen
+    // is that prompt (ASCII, so bytes == characters) plus whatever is being
+    // typed into it, and it is what parks the real cursor below — a plen
+    // computed from the wrong prompt puts the cursor in the wrong cell.
+    const std::string_view prompt = in_ordinal_mode(u) ? "goto> " : "regex> ";
+    const std::string&     typed  = in_ordinal_mode(u) ? u.goto_buf : u.pattern;
+
+    const int plen = static_cast<int>(prompt.size()) + utf8_chars(typed, typed.size());
     const int slen = utf8_chars(status, status.size());
-    o += std::format("{}regex> {}{}", kBold, u.pattern, kReset);
+    o += std::format("{}{}{}{}", kBold, prompt, typed, kReset);
     if (const int gap = w - plen - slen; gap > 0) {
         o.append(static_cast<size_t>(gap), ' ');
         o += std::format("{}{}{}", kDim, status, kReset);
@@ -768,20 +855,51 @@ void draw(Ui& u) {
     const int numw = static_cast<int>(
         std::to_string(u.lines.empty() ? 0 : u.lines.size() - 1).size());
 
+    // Match ordinal: the row's 1-based position in u.hits, so the column is
+    // exactly as wide as N. Unlike numw this DOES jitter — N changes on every
+    // refilter — which ADR-0007 records and accepts. An empty list renders no
+    // rows, so the width is never consulted in that case.
+    const int ordw = static_cast<int>(std::to_string(u.hits.size()).size());
+
+    // Row layout, and the whole of the width budget:
+    //   "> " or "  "   2
+    //   ordinal        ordw
+    //   space          1
+    //   line number    numw
+    //   space          1
+    //   text           the rest
+    const int textw = w - numw - ordw - 4;
+
     for (int r = 0; r < list_rows; ++r) {
         const size_t idx = u.top + static_cast<size_t>(r);
         if (idx >= u.hits.size()) { o += "\r\n"; continue; }
         const Hit& hit = u.hits[idx];
 
         o += (idx == u.sel) ? std::format("{}> ", kBold) : "  ";
+        o += std::format("{}{:>{}}{} ", kCyan, idx + 1, ordw, kDefaultFg);
         o += std::format("{}{:>{}}{} ", kDim, hit.line, numw, kUnbold);
         o += render_line(u.lines[static_cast<size_t>(hit.line)],
-                         hit.byte_start, hit.byte_end, w - numw - 3);
+                         hit.byte_start, hit.byte_end, textw);
         o += kReset;
         o += "\r\n";
     }
 
-    o += std::format("{}↑↓ select  Enter jump  Esc cancel  C-w word  C-u clear{}", kDim, kReset);
+    // "left-Alt" is not pedantry: ~/.config/keyd/default.conf gives rightalt to
+    // the fcitx5 IME toggle at the kernel level, so it never reaches tmux here.
+    constexpr std::string_view kFooter =
+        "↑↓ select  left-Alt-digit goto  Enter jump  Esc cancel  C-w word  C-u clear";
+
+    // Width guard, and the reason it is a guard rather than a shorter string:
+    // draw() emits exactly h lines (header + list_rows + footer), so a footer
+    // one cell too wide wraps, the pane scrolls, and the HEADER leaves the
+    // screen — taking the `goto>` prompt with it, which is ADR-0007's only
+    // on-screen evidence that ordinal mode is live. Any future key added below
+    // would bring that back; cutting to the measured width cannot.
+    //
+    // Cut in cells, not bytes (utf8_fit, the same decoder utf8_cells uses):
+    // the footer opens with `↑↓`. kDim/kReset are zero-width, so they are not
+    // charged against the budget and stay wrapped around whatever survives.
+    o += std::format("{}{}{}", kDim, kFooter.substr(0, utf8_fit(kFooter, w)), kReset);
 
     // Park the real cursor at the end of the pattern so typing looks normal.
     o += std::format("\x1b[1;{}H\x1b[?25h", plen + 1);
@@ -809,6 +927,9 @@ int run_ui(const std::string& pane) {
 
         switch (in.key) {
             case Key::Esc:
+                // Esc leaves the MODE, not sift. Outside the mode it cancels
+                // sift exactly as it always has.
+                if (in_ordinal_mode(u)) { u.goto_buf.clear(); break; }
                 return 0;                                  // cancel: pane untouched
                                                            // (~RawMode restores)
 
@@ -822,20 +943,36 @@ int run_ui(const std::string& pane) {
                 return 0;
             }
 
-            case Key::Up:   if (u.sel > 0) --u.sel; break;
-            case Key::Down: if (u.sel + 1 < u.hits.size()) ++u.sel; break;
-            case Key::Home: u.sel = 0; break;
-            case Key::End:  if (!u.hits.empty()) u.sel = u.hits.size() - 1; break;
+            case Key::Up:   if (u.sel > 0) --u.sel;                        sync_ordinal(u); break;
+            case Key::Down: if (u.sel + 1 < u.hits.size()) ++u.sel;         sync_ordinal(u); break;
+            case Key::Home: u.sel = 0;                                      sync_ordinal(u); break;
+            case Key::End:  if (!u.hits.empty()) u.sel = u.hits.size() - 1; sync_ordinal(u); break;
 
             case Key::PgUp: case Key::PgDn: {
                 const auto   sz   = term_size();
                 const size_t step = static_cast<size_t>(sz.h > 4 ? sz.h - 3 : 1);
                 if (in.key == Key::PgUp) u.sel = (u.sel > step) ? u.sel - step : 0;
                 else if (!u.hits.empty()) u.sel = std::min(u.sel + step, u.hits.size() - 1);
+                sync_ordinal(u);
                 break;
             }
 
+            case Key::AltDigit:
+                // Entry — and the keystroke is itself the first digit. Pressed
+                // again inside the mode it is simply another digit.
+                if (!in.text.empty()) push_ordinal_digit(u, in.text[0]);
+                break;
+
             case Key::Backspace: {
+                // In ordinal mode Backspace pops one digit, and popping the LAST
+                // one leaves the mode. So leaving the mode and deleting a
+                // pattern character are never the same keystroke: the second
+                // Backspace is the one that starts eating the pattern.
+                if (in_ordinal_mode(u)) {
+                    u.goto_buf.pop_back();
+                    if (in_ordinal_mode(u)) u.sel = ordinal_of(u.goto_buf) - 1;
+                    break;
+                }
                 if (u.pattern.empty()) break;
                 size_t i = u.pattern.size();
                 while (i > 0 && (static_cast<unsigned char>(u.pattern[i - 1]) & 0xC0) == 0x80) --i;
@@ -846,6 +983,7 @@ int run_ui(const std::string& pane) {
             }
 
             case Key::KillWord: {
+                u.goto_buf.clear();          // the pattern is about to change
                 size_t i = u.pattern.size();
                 while (i > 0 && u.pattern[i - 1] == ' ') --i;
                 while (i > 0 && u.pattern[i - 1] != ' ') --i;
@@ -855,11 +993,21 @@ int run_ui(const std::string& pane) {
             }
 
             case Key::KillLine:
+                u.goto_buf.clear();          // the pattern is about to change
                 u.pattern.clear();
                 refilter(u);
                 break;
 
             case Key::Text:
+                if (in_ordinal_mode(u)) {
+                    // A bare digit extends the buffer; anything else leaves the
+                    // mode and is NOT swallowed — it lands in the pattern below.
+                    if (in.text.size() == 1 && in.text[0] >= '0' && in.text[0] <= '9') {
+                        push_ordinal_digit(u, in.text[0]);
+                        break;
+                    }
+                    u.goto_buf.clear();
+                }
                 u.pattern += in.text;
                 refilter(u);
                 break;
