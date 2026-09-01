@@ -10,3 +10,11 @@
   match highlights live, Enter lands the copy-mode cursor on a match, then one key
   chooses grain (word or line) and destination (clipboard, or clipboard plus
   Claude). Avoid: jump, thumbs, search tool
+- *Match ordinal* (候選序號) :: A hit's 1-based position within =sift='s *current*
+  result set — the same set the header counts as =N matches=. It is not a scrollback
+  line number, and it renumbers on every =refilter=, so it is stable only while the
+  pattern is. Avoid: index, 行號, line number, hint
+- *Ordinal mode* (選號模式) :: The transient =sift= input mode in which bare digits
+  build a match ordinal instead of extending the regex pattern. Entered with
+  =Alt-<digit>=, which supplies the first digit; the prompt changes to =goto>= so the
+  mode is never invisible. Avoid: goto mode, jump mode, number mode

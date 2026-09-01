@@ -1,0 +1,135 @@
+#+TITLE: ADR-0007: Select a sift match by typing its ordinal, in an Alt-entered transient mode
+#+STATUS: accepted
+#+DATE: 2026-09-01
+#+DECIDERS: @fenrir
+
+* Context and Problem Statement
+
+=sift='s result list ([[file:0005-own-the-interaction-loop-for-regex-search.org][ADR-0005]]) offers exactly one way to choose among candidates —
+=↑↓= / =C-p C-n= / =Home= / =End= / =PgUp PgDn= — so reaching the /N/th match costs
+O(N) keystrokes against a list that holds up to 20000 hits and shows 59 rows at the
+popup's measured 265x61. The user asked to be able to name a candidate by number
+instead; the obstacle is that digits are already load-bearing input — they are legal
+extended-regex characters (=[0-9]{3}=, =line 150=), and =verify-sift-live.sh= §4
+already types =b b 1 5 0= into the pattern.
+
+* Decision Drivers
+
+- *Digits cannot be silently repurposed.* Any scheme that binds bare digits to
+  selection changes what typing a digit means to a regex the user is composing —
+  a behaviour the live suite already exercises.
+- *The number must be readable before it is typed.* A selection number nobody can
+  see is a number nobody uses, so whatever the scheme, the label has to be on screen
+  at the moment of the decision.
+- *The list is not stable.* Every keystroke that changes the pattern re-runs
+  =refilter= and renumbers the whole result set, so a numbering scheme is only ever
+  stable while the pattern is.
+- *The keystroke loop had no modes.* ADR-0005's whole subject is that =sift= owns its
+  own keystroke loop; adding state to that loop is the architectural cost of anything
+  multi-keystroke.
+- *Right Alt is not available on this machine.* =~/.config/keyd/default.conf:40= binds
+  =rightalt= to the fcitx5 IME toggle at the kernel level, so it never reaches tmux;
+  only Left Alt is a usable modifier here.
+
+* Considered Options
+
+1. Global match ordinals =1..N=, typed into an =Alt-<digit>=-entered transient mode.
+2. Screen-local hint labels (=1-9=, then =a-z=) on visible rows only, one keystroke each.
+3. Reuse the scrollback line number already printed on each row as the "number".
+4. Status quo — arrow keys only.
+
+* Decision Outcome
+
+Chosen: *option 1*. The user's ask was for a /candidate/ number, and the only numbering
+that means the same thing as the header's =N matches= is the ordinal over the whole
+result set; hint labels buy a single keystroke but renumber every row on every
+=refilter=, which is precisely when the user is looking at them. Multi-digit ordinals
+force a keystroke buffer, and =Alt-<digit>= is the entry channel because it supplies
+the first digit in the same keypress and was measured to arrive intact.
+
+** The interaction, as settled
+
+- The ordinal column renders *always*, left of the line-number column, at the width of
+  the current /N/.
+- *Left* =Alt-<digit>= enters *ordinal mode* and is itself the first digit. The prompt
+  changes =regex>= → =goto>=, so the mode is never invisible. =Alt-0=, an empty list,
+  and an invalid pattern are all ignored — none of them names a candidate.
+- Inside the mode, bare digits extend the buffer; a keystroke that would push the
+  ordinal past /N/ is *not* buffered. Selection follows the buffer live, so =Enter= is
+  a confirmation of something already on screen rather than a wager, and there is no
+  "no such match" error path to write.
+- Buffer and selection are *one object*: =↑↓= move the selection and rewrite the buffer
+  with it, so =goto>= always names where the cursor actually is.
+- A non-digit printable character leaves the mode and lands in the pattern;
+  =Backspace= pops one digit, and popping the last one leaves the mode — a second
+  =Backspace= is the one that starts deleting pattern. =Esc= leaves the mode.
+- =Enter= jumps and exits =sift=, exactly as it does today: ADR-0005's hand-back to
+  tmux's own =search-backward= is untouched.
+
+Because every exit from the mode happens *before* the pattern can change, =refilter=
+can never run while the mode is live — the ordinals are frozen for the whole life of
+the buffer.
+
+** Consequences
+
+- *Good.* Reaching an arbitrary candidate is O(digits) instead of O(N); at the 20000
+  cap the worst case is five keystrokes rather than 19999.
+- *Good.* Bare digits keep meaning exactly what they meant to the regex, so no
+  existing pattern, test, or habit changes.
+- *Good.* The =Alt-<digit>= entry cost nothing to claim: the byte pair it produces was
+  already being decoded and discarded (=read_key='s =ESC= branch returns =Key::None= for
+  any non-=[=/=O= follower), and the existing =ESC_SEQ_MS= window is what separates it
+  from a bare =Esc=.
+- *Good.* =sift rows= is untouched — the ordinal is the output row's position, so the
+  headless seam gains nothing to assert and nothing to break.
+- *Bad.* The keystroke loop now has a mode, which is a new class of bug for a program
+  that had exactly one input state; every future key added to =sift= must now answer
+  "and what does it do in ordinal mode?".
+- *Bad.* Typing a multi-digit ordinal drags the selection through every prefix of it —
+  =1=, =15=, =150= — so the list scrolls two or three times on the way to one landing.
+- *Bad.* The feature is unreachable with the right-hand Alt key on this machine, which
+  is a keyboard-layout fact the tool cannot detect or explain; the footer and runbook
+  have to say "left Alt" and will be wrong on a machine without that keyd config.
+- *Bad.* The ordinal column widens and narrows as /N/ changes, unlike the line-number
+  column, whose width =draw()= deliberately derives from the capture size precisely to
+  stop it jittering.
+
+* Pros and Cons of the Options
+
+** Option 1: Global ordinals in an =Alt-<digit>= transient mode
+
+- Good: the number means the same thing as the header's =N matches=, and stays put for
+  as long as the user is looking at it.
+- Good: leaves bare digits to the regex; the entry key was previously dead input.
+- Bad: multi-digit entry needs a buffer, and a buffer needs a mode.
+
+** Option 2: Screen-local hint labels
+
+- Good: always exactly one keystroke, no buffer, no mode, no out-of-range case.
+- Good: matches the house style of =tmux-thumbs= and the in-repo =tmux-ace-window= port.
+- Bad: 1-9 plus a-z is 35 labels against 59 visible rows, so either the list is
+  partially unlabelled or labels grow to two characters.
+- Bad: labels are positional, so they are reassigned by every scroll and every
+  =refilter= — they churn most exactly while the pattern is being typed.
+
+** Option 3: Type the scrollback line number
+
+- Good: costs no new column; the number is already printed on every row.
+- Bad: line numbers are neither contiguous nor uniform in width, so there is no way to
+  know when the digits are complete.
+- Bad: most typed numbers name no candidate at all, which forces the error path that
+  option 1's out-of-range rejection removes.
+
+** Option 4: Status quo (arrow keys only)
+
+- Good: zero new state, zero new keys, nothing to document.
+- Bad: leaves the O(N) traversal that motivated the request.
+
+* Links
+
+- Refines [[file:0005-own-the-interaction-loop-for-regex-search.org][ADR-0005]] — =sift= owning its keystroke loop is what makes a mode possible
+  at all; the hand-back of the jump to tmux is unchanged by this ADR.
+- Related to [[file:0006-port-sift-from-cpp-to-rust.org][ADR-0006]] — the Rust port is the codebase this lands in.
+- Vocabulary: =Match ordinal= (候選序號) and =Ordinal mode= (選號模式) in
+  [[file:../../CONTEXT.org][CONTEXT.org]].
+- Grill record: [[file:../../records/2026-09-01-1330-sift-ordinal-selection/grill/2026-09-01-1330-sift-ordinal-selection.org][2026-09-01 shared understanding]].

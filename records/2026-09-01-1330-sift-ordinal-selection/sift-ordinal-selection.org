@@ -1,0 +1,58 @@
+#+TITLE: sift ordinal selection — pick a match by typing its number
+#+TODO: TODO | DONE CANCELLED
+#+WF_FORMAT: 1
+
+* Destination
+
+=prefix /='s result list can be driven by number: Left =Alt-<digit>= opens ordinal
+mode with that digit, further digits extend it, the selection follows live, and
+=Enter= jumps — with the regex input, the arrow keys, and ADR-0005's hand-back of the
+jump to tmux all unchanged. Reached when the behaviour is built, asserted by the two
+verification suites, and documented where the other =sift= behaviour is documented.
+
+* Notes
+
+- Working repo: =/home/fenrir/.tmux= @ =main= (single worktree; remote
+  FenrirZheng/config-tmux). Code under =tools/sift/src/main.rs=.
+- *This map carries execution, not just specification* — the design is already
+  settled, so the tickets below do work rather than decide. Same shape as the sibling
+  [[file:../2026-08-27-2240-tmux-sift/tmux-sift.org][tmux-sift]] map, and a deliberate override of wayfinder's plan-don't-do default.
+- The design is fixed by [[file:../../docs/adr/0007-select-a-sift-match-by-typing-its-ordinal.org][ADR-0007]]; the interview that produced it, with every
+  rejected alternative and every measurement, is
+  [[file:grill/2026-09-01-1330-sift-ordinal-selection.org][the 2026-09-01 grill snapshot]]. Vocabulary (=Match ordinal=, =Ordinal mode=) is in
+  [[file:../../CONTEXT.org][CONTEXT.org]]. Read all three before touching the code.
+- *Left Alt only.* =~/.config/keyd/default.conf:40= gives =rightalt= to the fcitx5 IME
+  toggle at the kernel level, so it never reaches tmux.
+- Read [[file:../../tools/ARCHITECTURE.org][tools/ARCHITECTURE.org]] and the atlas node [[file:../../tools/atlas/sift.org][tools/atlas/sift.org]] before editing the
+  crate; the atlas node is updated in the same change as the code it covers.
+- Skills every session here should consult: =atlas-nav= / =atlas-build= (the node),
+  =adr-writing= (any further decision), =syntax-check-no-artefact= (never leave build
+  artefacts behind a syntax check).
+- Verification lives at
+  =records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-{jump,live}.sh=. *Do
+  not remove the control case at the top of =verify-sift-jump.sh=* — without it a
+  misaimed =$TMUX= silently drives the user's real tmux server.
+
+* Decisions so far
+
+* Not yet specified
+
+- Whether the ordinal column's width should keep tracking the current /N/ (and so
+  jitter as the pattern changes) or be pinned the way =draw()= pins the line-number
+  column from the capture size. Only using the feature will say.
+- Whether ordinal mode wants any indicator beyond the =goto>= prompt once it is in
+  daily use — the popup header has room, but inventing one before the feature has been
+  lived with is guessing.
+
+* Out of scope
+
+- =seek= and =prefix Space= — untouched; ADR-0001 still stands for plain search.
+- The =Sift= entry missing from [[file:../../CONTEXT.org][CONTEXT.org]] (which defines =Seek=). A real gap, but it
+  predates this effort and does not lie toward this destination.
+- Any change to how the jump itself is performed. ADR-0005's hand-back to tmux's
+  =search-backward= is what keeps highlighting, ~n~ / ~N~ and seek's grab keys working,
+  and this effort does not touch it.
+- Hint-label selection, screen-local or otherwise — considered and rejected in
+  ADR-0007, not deferred.
+
+* Tickets

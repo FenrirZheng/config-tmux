@@ -1,0 +1,90 @@
+#+TITLE: 2026-09-01-1330-sift-ordinal-selection
+
+Standalone destination-and-frontier grill (wayfinder lite charting). The map for this
+effort lands in this same effort directory.
+
+* Decisions
+
+- *The number is a global match ordinal =1..N=*, the same set the header counts as
+  =N matches= — not a screen-local hint label, because labels are reassigned by every
+  scroll and every =refilter=, which is exactly when the user is reading them.
+  Coined as [[file:../../../CONTEXT.org][=Match ordinal= (候選序號)]].
+- *The ordinal column renders always*, left of the line-number column, at the width of
+  the current /N/ — a number nobody can see before entering a mode is a number nobody
+  uses.
+- *Entry is Left =Alt-<digit>=, which is also the first digit*
+  ([[file:../../../docs/adr/0007-select-a-sift-match-by-typing-its-ordinal.org][ADR-0007]]) — bare digits are legal regex input that =verify-sift-live.sh= §4 already
+  exercises (=b b 1 5 0=), so they cannot be repurposed. Coined as
+  [[file:../../../CONTEXT.org][=Ordinal mode= (選號模式)]]; the prompt changes =regex>= → =goto>= so the mode is
+  never invisible.
+- *=Alt-0=, an empty list, and an invalid pattern are ignored* — none of them names a
+  candidate, so none of them should open a buffer.
+- *Selection follows the buffer live, and an out-of-range digit is not buffered* — so
+  =Enter= confirms something already on screen, and the "no such match" error path
+  never has to exist. Verified reachable: with =N=12=, =Alt-1= then =2= still reaches
+  #12, so rejection does not strand candidates.
+- *The buffer and the selection are one object* — =↑↓= move the selection and rewrite
+  the buffer, so =goto>= always names where the cursor actually is rather than where
+  it was asked to go.
+- *A non-digit printable leaves the mode into the pattern; =Backspace= pops a digit and
+  popping the last one leaves the mode* — a second =Backspace= is the one that starts
+  deleting pattern, so backspacing never crosses a layer by surprise.
+- *=Enter= jumps and exits =sift=*, unchanged from today — ADR-0005's hand-back to
+  tmux's own =search-backward= is untouched, and ordinal entry replaces the arrow keys
+  rather than adding a second confirmation step.
+- *Arrow / Home / End / PgUp / PgDn all stay.* The ordinal is an addition, not a
+  replacement — the user's ask was "not /only/ the up/down keys".
+- *=sift rows= is unchanged* — the ordinal is the output row's position, so the
+  headless seam gains nothing to assert.
+
+* Measurements taken during the grill
+
+- *=Alt-<digit>= reaches =sift= inside the real popup, intact.* Driven through the real
+  =prefix /= binding on a throwaway server pair (the =verify-sift-live.sh= §6 shape),
+  with a plain-keystroke positive control in the same run: the popup survived =Alt-1=
+  (so it did not arrive as a bare =Esc=) and the following =r= produced =regex> er=,
+  not =regex> e1r= (so the digit did not leak into the pattern). tmux delivers the pair
+  as =0x1b 0x31=, which =read_key= already decodes and discards.
+- *The =keyboard → alacritty → tmux= leg is =[未驗證]=.* Every probe above synthesised
+  the keypress with =tmux send-keys M-1=, never a physical key.
+  =~/.config/alacritty/alacritty.toml= does not set =alt_send_esc=, so this rests on
+  alacritty's documented default. One real keypress settles it; do that first at
+  implementation.
+- *Only Left Alt is usable on this machine.* =~/.config/keyd/default.conf:40= binds
+  =rightalt= to the fcitx5 IME toggle at the kernel level, so it never reaches tmux;
+  the same file's line 25 records Left Alt as unmapped. The footer and runbook must
+  say "left Alt".
+- *Popup geometry*: 95%/90% on a 282x71 client gives 265x61, i.e. 59 list rows —
+  which is what rules out a single-keystroke 1-9/a-z hint alphabet (35 labels).
+- *No =refilter= can run inside ordinal mode*, since every exit from the mode happens
+  before the pattern can change. The ordinals are frozen for the buffer's whole life.
+
+* Rejected alternatives
+
+- *Screen-local hint labels* (=tmux-thumbs= / the in-repo =tmux-ace-window= house
+  style) — always one keystroke, but 35 single-character labels do not cover 59 rows,
+  and the labels churn on every scroll and every =refilter=.
+- *Typing the scrollback line number already printed on each row* — no new column, but
+  line numbers are non-contiguous and of uneven width, so nothing signals when the
+  digits are complete and most typed numbers name no candidate.
+- *=Tab= to toggle the mode* — cleanly separates entry from digits, but costs one more
+  keystroke than =Alt-<digit>=, which carries the first digit itself.
+- *=Alt-<digit>= for every digit, with no mode at all* — no state to get wrong, but the
+  heaviest key sequence for multi-digit ordinals.
+- *A prefix character such as =:= or =#=* — familiar from vim, but both are legal regex
+  characters and would need an escape rule to remain typeable into the pattern.
+- *=Enter= moving the selection only, leaving =sift= open* — rejected because it makes
+  =Enter= mean two different things depending on mode; live preview already gives the
+  confirmation this option was reaching for.
+
+* Open items
+
+- The physical-keypress verification of =Alt-<digit>= through alacritty (above) —
+  resolved by one real keypress into a running =sift=.
+- =CONTEXT.org= defines =Seek= but has no =Sift= entry, a gap that predates this
+  session. Resolved by writing one; not done here because it was not what this grill
+  settled.
+- Whether the ordinal column's width should track the current /N/ (settled here, and
+  it therefore jitters as /N/ changes) or be pinned the way =draw()= pins the
+  line-number column from the capture size. Resolved by using the feature and seeing
+  whether the jitter is noticed.
