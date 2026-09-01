@@ -14,6 +14,14 @@ verification suites, and documented where the other =sift= behaviour is document
 
 - Working repo: =/home/fenrir/.tmux= @ =main= (single worktree; remote
   FenrirZheng/config-tmux). Code under =tools/sift/src/main.cpp=.
+- *The substrate changed under this map on 2026-09-01.* =sift='s Rust port was
+  reverted at the user's instruction (=460c3f1=; ADR-0006 is gone with it), so the
+  crate is the C++20/cmake program again — built with =cmake --preset release= from
+  =tools/sift=, never =cargo=. Consequence for anyone reading the grill snapshot: its
+  measurements were taken against the *Rust* binary, so a keystroke or rendering claim
+  quoted from it is =[未驗證]= until re-run against the C++ one. The Alt-digit control
+  has been re-run ([[#t1][Confirm Alt-digit survives a real keypress through alacritty]]);
+  the rest have not.
 - *This map carries execution, not just specification* — the design is already
   settled, so the tickets below do work rather than decide. Same shape as the sibling
   [[file:../2026-08-27-2240-tmux-sift/tmux-sift.org][tmux-sift]] map, and a deliberate override of wayfinder's plan-don't-do default.
