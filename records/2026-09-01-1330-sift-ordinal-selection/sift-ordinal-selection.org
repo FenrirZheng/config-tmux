@@ -191,3 +191,26 @@ re-proving per-assertion.
 
 Resolution records the new pass counts for both suites, replacing the 13/0 and 6/0 the
 runbook and the atlas node quote.
+
+** TODO Document ordinal mode where the rest of sift is documented :task:
+:PROPERTIES:
+:CUSTOM_ID: t4
+:ASSIGNEE:
+:BLOCKED_BY: t2
+:END:
+
+*** Question
+
+The destination's third clause. Update =runbooks/sift.md= — the key table, the
+=goto>= prompt, left-Alt-only (=~/.config/keyd/default.conf:40= gives =rightalt= to
+the fcitx5 IME toggle), and the verification counts as they land from
+[[#t3][Assert ordinal mode in the verification suites]].
+
+Also decide, and record, whether the popup's own footer/help line needs the new keys
+spelled out or whether the =goto>= prompt is self-explanatory — the grill left the
+in-popup indicator question open on purpose ("inventing one before the feature has
+been lived with is guessing"), so the default answer here is the minimum that is not
+misleading.
+
+Out of scope, as charted: the missing =Sift= entry in =CONTEXT.org= — a real gap that
+predates this effort.
