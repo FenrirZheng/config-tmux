@@ -1,10 +1,13 @@
 # Runbook: sift — `prefix /`, popup regex search
 
 Operational guide for installing, verifying, and troubleshooting the
-[`sift`](../tools/sift/src/main.cpp) tool. Design rationale lives in
-[ADR-0005](../docs/adr/0005-own-the-interaction-loop-for-regex-search.org);
-crate/binding conventions in [ARCHITECTURE.org](../tools/ARCHITECTURE.org).
-Its plain-text sibling on `prefix Space` is [`seek`](seek.md).
+[`sift`](../tools/sift/src/main.rs) tool. Design rationale for the interaction
+loop lives in
+[ADR-0005](../docs/adr/0005-own-the-interaction-loop-for-regex-search.org); the
+Rust-vs-C++ language/build decision is
+[ADR-0006](../docs/adr/0006-port-sift-from-cpp-to-rust.org); crate/binding
+conventions in [ARCHITECTURE.org](../tools/ARCHITECTURE.org). Its plain-text
+sibling on `prefix Space` is [`seek`](seek.md).
 
 ## What it does
 
@@ -20,6 +23,19 @@ match highlighted; `Enter` sends the pane to the one you picked.
 | `Backspace`, `C-w`, `C-u` | delete a character / a word / the whole pattern |
 | `Enter` | jump the pane to the selected occurrence |
 | `Esc`, `C-g`, `C-c` | cancel — the pane is not touched |
+
+`Home`/`End` genuinely jump to the first/last match, as the table says — fixed
+in the 2026-08-31 Rust port. The C++ binary recognised only the xterm
+letter-form escape sequences (`ESC[H`/`ESC[F`); tmux itself sends the numeric
+forms (`ESC[1~`/`ESC[4~`), which the C++ decoder did not handle and so leaked
+the trailing `~` into the search pattern instead of moving the selection. The
+Rust decoder accepts both forms (plus the rxvt numeric variants), so `Home`/
+`End` now do what this table always said.
+
+Resizing the popup (e.g. dragging the terminal window) now **redraws the list
+at the new size** and keeps whatever you had typed. The C++ binary treated the
+`SIGWINCH` the resize delivers as if it were an `Esc` keypress and cancelled
+the search outright — undocumented, and also fixed in the port.
 
 `sift` takes an optional pane id (`sift %5`); with none it searches the client's
 active pane, which is how the key binding uses it. That is not a convenience —
@@ -38,50 +54,64 @@ most-recent-first bias as the `search-backward` binding this replaced.
 When the pane is on the alternate screen (`vim`, `less`, `htop`) there is no
 scrollback to search, and the header says `⚠ visible screen only`.
 
-## Install
+## Scripted use: `sift rows`
 
-`sift` is C++ and does **not** build with `cargo`. From a fresh clone:
+Besides the popup, `sift` has a headless seam that prints matches instead of
+drawing anything. It is what [`verify-sift-jump.sh`](../records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh)
+asserts against, and it is the way to ask sift a question from a script.
 
 ```bash
-cd ~/.tmux/tools/sift
-cmake --preset release && cmake --build --preset release
-tmux source-file ~/.tmux.conf     # required — the binding's guard is load-time
+sift rows <pane-id> <extended-regex>
 ```
 
-[`CMakePresets.json`](../tools/sift/CMakePresets.json) pins the generator
-(Ninja) and the build directory, so there is one spelling to remember and the
-`-S`/`-B`/`-DCMAKE_BUILD_TYPE` triple cannot drift between this runbook and
-whatever you typed last time.
+It needs `$TMUX` to point at the server holding that pane — the same way every
+other tool here finds its server. From outside a tmux client, set it explicitly:
+`TMUX="$(tmux -L <sock> display-message -p '#{socket_path}'),0,0" sift rows %0 'aa1'`.
 
-Needs a C++20 compiler (g++ ≥ 10), `ninja`, and cmake ≥ 3.21 for presets. No
-ncurses, no external libraries — raw termios, ANSI, POSIX `<regex.h>` and libc
-`wcwidth`. **Ninja is a convenience, not a requirement**: without it, or on an
-older cmake, the generator-less form still builds the same binary —
+One tab-separated row per occurrence in **scrollback order, oldest first** —
+note this is the opposite of the popup, whose *selection* starts on the match
+nearest the bottom. Five fields:
+
+| # | field | unit |
+|---|---|---|
+| 1 | `line` | scrollback row index — **pane state, not content**: the same corpus in a pane with one extra line above it shifts every value by one |
+| 2 | `char_start` | **characters** (codepoints), 0-based |
+| 3 | `char_end` | **characters**, exclusive |
+| 4 | `cell_col` | **terminal cells** (`wcwidth`) — a CJK character is two cells, so on `中文測試 aa999 尾巴` field 2 is `5` and field 4 is `9` |
+| 5 | `text` | the raw line, unescaped |
+
+Fields 2-4 are the distinction that matters: `send-keys -X cursor-right -N`
+counts **characters**, `#{copy_cursor_x}` reports **cells**, and the two only
+diverge on lines with wide characters. Getting them confused produces a jump that
+lands on the right line and the wrong column — silently.
+
+Exit status is **0 on every path**, including an invalid regex, a pane that does
+not exist, and missing arguments; errors go to stderr. Check for empty output, not
+for a non-zero exit.
+
+
+## Install
+
+`sift` is a normal member of the `tools/` cargo workspace — build it the same
+way as every sibling tool. From a fresh clone:
 
 ```bash
 cd ~/.tmux/tools
-cmake -S sift -B target/cmake-build -DCMAKE_BUILD_TYPE=Release
-cmake --build target/cmake-build -j
+cargo build --release
+tmux source-file ~/.tmux.conf     # required — the binding's guard is load-time
 ```
 
-Do not expect Ninja to speed up the compile. `sift` is a single translation
-unit, so there is nothing for a build scheduler to parallelise; measured on this
-machine, a full build is 2446 ms under Ninja against 2434 ms under make. What
-Ninja actually buys is the **no-op** rebuild — 16 ms against make's 56 ms —
-which is the case that recurs while editing. The 2.4 s is g++ optimising one
-910-line TU, and only 454 ms of that is the standard headers, so precompiled
-headers do not help either (measured: 3014 ms clean, because it also has to
-build the PCH). If that 2.4 s ever becomes the bottleneck, `ccache` is the lever
-that would move it, not the generator.
+Ported from C++/cmake to Rust on 2026-08-31 ([ADR-0006](../docs/adr/0006-port-sift-from-cpp-to-rust.org)).
+No external dependencies beyond the workspace's existing `libc` crate — raw
+termios, ANSI, POSIX `regcomp`/`regexec` and glibc `wcwidth`, all reached
+through FFI, exactly as the C++ used them directly.
 
-Two things worth knowing about where the build output goes:
-
-- The binary lands in `tools/target/release/` next to the cargo output, so
-  `claude.conf` keeps one path shape for every tool. **`cargo clean` deletes it**
-  along with the Rust binaries; re-run the `cmake --build` line above.
-- The cmake build tree is under `tools/target/` too, which
-  [`tools/.gitignore`](../tools/.gitignore) already covers — there is no extra
-  ignore rule to add.
+The binary lands in `tools/target/release/` next to every other tool, so
+`claude.conf` keeps one path shape for every binary. That used to be shared
+with a separate cmake build tree — `cargo clean` deleting `sift` along with
+the Rust binaries was a standing footgun this runbook had to warn about — but
+with the port there is only one build system: `cargo clean` followed by
+`cargo build --release` simply rebuilds `sift` like any other crate here.
 
 ## Verify
 
@@ -89,6 +119,11 @@ Two things worth knowing about where the build output goes:
 bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh   # 13 assertions
 bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh   #  6 assertions
 ```
+
+Both were run against the Rust binary during the 2026-08-31 port and passed
+13/0 and 6/0 respectively — the same counts as the C++ baseline. `sift rows`
+output was additionally checked byte-identical across 26 regex patterns, and
+26 differential rendering comparisons between the two binaries matched.
 
 Both spin up a throwaway tmux server and clean it up. `verify-sift-jump.sh`
 asserts the jump arithmetic against hand-issued tmux commands;
@@ -98,23 +133,32 @@ target pane, so it would catch a wrong wiring that the first script cannot.
 ### Under the sanitizers
 
 Both scripts honour `$SIFT`, so the same 19 assertions can be re-run against an
-ASan + UBSan + LSan build. The sanitizer target is deliberately named
-`sift-asan`: it shares the output directory with the release binary, and an
-instrumented binary silently taking over `prefix /` would be a slow, confusing
-regression rather than a loud one.
+ASan + LSan build. `-Zsanitizer` is nightly-only, and the `--target` is not
+optional: without it cargo writes the instrumented binary straight over
+`target/release/sift`, and a 3.7 MB instrumented binary silently taking over
+`prefix /` is a slow, confusing regression rather than a loud one (measured —
+the no-`--target` form does exactly this). With the triple spelled out the
+build lands in `target/x86_64-unknown-linux-gnu/release/` instead, out of the
+release binary's way. `strip = true` in `[profile.release]` would take the
+symbols a sanitizer report needs, so the recipe turns it off for this build
+only.
 
 ```bash
-cd ~/.tmux/tools/sift
-cmake --preset asan && cmake --build --preset asan
-SIFT=~/.tmux/tools/target/release/sift-asan \
+cd ~/.tmux/tools
+RUSTFLAGS="-Zsanitizer=address" cargo +nightly build --release -p sift \
+  --target x86_64-unknown-linux-gnu --config 'profile.release.strip=false'
+SIFT=~/.tmux/tools/target/x86_64-unknown-linux-gnu/release/sift \
   bash ~/.tmux/records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh
 ```
 
-Expect the same `passed 13, failed 0` with no sanitizer output at all. The
-instrumented build is roughly 4x slower, so the live script's scrollback timing
-assertion has that much less headroom (measured 243 ms against its 300 ms
-budget, versus 60 ms uninstrumented) — a failure there under `sift-asan` alone
-is the sanitizer, not a regression.
+Expect `passed 13, failed 0` (and `passed 6, failed 0` from the live script)
+with no sanitizer output at all — measured on the ported binary 2026-09-01,
+which is the run that exercises the `unsafe` FFI the port kept: `regcomp`,
+`regexec`, `wcwidth`, `termios`, `poll`. The instrumented build is roughly 3.5x
+slower, so the live script's scrollback timing assertion has that much less
+headroom (measured 194 ms against its 300 ms budget, versus 56 ms
+uninstrumented) — a failure there under the sanitizer build alone is the
+sanitizer, not a regression.
 
 Both scripts point `$TMUX` at the throwaway socket before invoking `sift`. That
 is not incidental: `sift` finds its server through `$TMUX` like every other tool
@@ -163,10 +207,14 @@ enough new output while the popup was open that the captured line indices no
 longer point where they did, or tmux's search wrapped. The cursor is on a real
 match of the same pattern, just not the one that was picked. Re-run the search.
 
-**Nothing matches but you expect hits** — `sift` uses POSIX *extended* regex,
-which is what tmux's own search uses. Perl-isms are not available: `\d`, `\w`,
-`\s` and lazy quantifiers are not extended-regex syntax. Use `[0-9]`, `[[:alnum:]_]`,
-`[[:space:]]`.
+**Nothing matches but you expect hits** — `sift` uses POSIX *extended* regex via
+glibc's `regcomp`/`regexec`, the same engine tmux's own search uses. Fewer
+Perl-isms are missing than you might expect: measured on glibc 2.41, `\w`,
+`\W`, `\s`, `\S`, `\b`, `\<` and `\>` all work as GNU extensions, and
+backreferences work too. Only `\d` and lazy quantifiers (`*?`, `+?`) are
+genuinely unavailable in this extended-regex dialect — `\d` is read as a
+literal `d`. Use `[0-9]` in place of `\d`; there is no substitute for a lazy
+quantifier in POSIX ERE.
 
 **The header says `⚠ visible screen only`** — the pane is on the alternate
 screen; there is no scrollback to search. Leave the full-screen program first.

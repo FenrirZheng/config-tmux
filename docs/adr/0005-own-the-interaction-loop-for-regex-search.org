@@ -42,7 +42,7 @@ ADR-0001's rule, or own its interaction loop.
 
 * Decision Outcome
 
-Chosen option: "*Option 2*", implemented as [[file:../tools/sift/src/main.cpp][=sift=]].
+Chosen option: "*Option 2*", implemented as [[file:../tools/sift/src/main.rs][=sift=]] (originally C++, ported to Rust 2026-08-31 — [[file:0006-port-sift-from-cpp-to-rust.org][ADR-0006]]).
 
 This narrows ADR-0001 rather than reversing it. ADR-0001's chosen option won
 because tmux supplied the two hardest drivers at zero cost; for regex tmux
@@ -128,3 +128,11 @@ All measured on tmux 3.5a; probe scripts in
 6. =#{copy_cursor_line}= truncates at the first wide character — a line reading
    =中文測試 aa999 尾巴= comes back as =中=. Verification is therefore positional
    (=history_size - scroll_position + copy_cursor_y=), never textual.
+
+* Links
+
+- Refined by: [[file:0006-port-sift-from-cpp-to-rust.org][ADR-0006]] — a later, separate decision about which language and
+  build system implement the interaction loop chosen here (C++/cmake, then
+  Rust). This ADR's architectural bargain — =sift= owns the keystrokes and the
+  candidate list, tmux owns the actual search and the jump — is unchanged by
+  that decision.
