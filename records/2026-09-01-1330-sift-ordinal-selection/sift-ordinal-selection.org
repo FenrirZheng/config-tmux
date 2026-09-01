@@ -60,7 +60,8 @@ verification suites, and documented where the other =sift= behaviour is document
 ** TODO Confirm Alt-digit survives a real keypress through alacritty :task:
 :PROPERTIES:
 :CUSTOM_ID: t1
-:ASSIGNEE:
+:ASSIGNEE: fenrir@6c05db1f
+:CLAIMED_AT: 2026-09-01 14:05
 :BLOCKED_BY:
 :END:
 
