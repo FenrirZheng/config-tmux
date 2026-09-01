@@ -1,0 +1,22 @@
+== 1. cmake --preset release builds with zero warnings ==
+  PASS  build clean, 0 warnings
+== 2. verify-sift-jump.sh: exit 0, >=13 passed, 0 failed ==
+  PASS  jump 13/0
+== 3. verify-sift-live.sh: exit 0, >=12 passed, 0 failed ==
+  FAIL  live suite
+        want: rc=0 passed>=12 failed=0
+        got : rc=0 passed=6 failed=0
+== 4. >=6 assertions in the suites name ordinal mode ==
+  FAIL  ordinal assertions in the suites
+        want: >=6
+        got : 0
+== 5. runbooks/sift.md documents goto> and the left-Alt restriction ==
+  FAIL  runbook documents goto> and left Alt
+        want: both present
+        got : 0/2 present
+== 6. t2, t3, t4 are DONE in the map ==
+  FAIL  t2/t3/t4 DONE in the map
+        want: 3
+        got : 0
+
+goal-check: 2 passed, 4 failed

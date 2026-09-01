@@ -1,0 +1,12 @@
+ M records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh
+ M records/2026-09-01-1330-sift-ordinal-selection/sift-ordinal-selection.org
+ M runbooks/sift.md
+ M tools/atlas/sift.org
+ M tools/sift/src/main.cpp
+?? graphruns/
+?? records/2026-08-27-2240-tmux-sift/assets/scripts/index.org
+?? records/2026-08-27-2240-tmux-sift/assets/scripts/probe-sift-keys.py
+?? records/2026-08-27-2240-tmux-sift/assets/scripts/run_q4.sh
+?? records/2026-09-01-1330-sift-ordinal-selection/assets/scripts/feature.sh
+?? records/2026-09-01-1330-sift-ordinal-selection/assets/scripts/index.org
+?? records/2026-09-01-1330-sift-ordinal-selection/assets/scripts/sweep.sh

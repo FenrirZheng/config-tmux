@@ -1,0 +1,16 @@
+== 1. the popup renders and counts matches live ==
+  ok   header reports 1 match for bb150
+== 2. Enter jumps the TARGET pane onto the match start ==
+  ok   target cursor on bb150, search registered, still in copy-mode
+== 3. the popup process exited on its own (display-popup -E would close) ==
+  ok   sift exited after the jump
+== 4. Esc cancels without touching the target ==
+  ok   target untouched by Esc (pane_in_mode)
+== 5. filter cost against a full 100000-line scrollback ==
+  history_size=99974
+  matched 10000 lines in 60ms
+  ok   one filter pass under 300ms (60ms)
+== 6. the REAL binding, driven by a real prefix keypress ==
+  ok   prefix / opens sift and it renders its prompt
+
+passed 6, failed 0

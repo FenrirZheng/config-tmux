@@ -1,0 +1,25 @@
+  ok   harness targets the throwaway server
+== 1. rows: the headless seam finds every occurrence ==
+  ok   bb1xx occurrence count
+== 2. rows: columns are CHARACTERS, not bytes (CJK line) ==
+  ok   CJK char_start/char_end
+== 3. the jump lands on the picked OCCURRENCE, cursor on its start ==
+  ok   jump to aa150
+  ok   jump to bb150
+  ok   jump to cc150
+== 4. after the jump, n / N still step (tmux registered the pattern) ==
+  ok   n steps backward one occurrence
+== 5. the pane stays in copy-mode so seek's w/W/l/L can chain ==
+  ok   pane_in_mode
+== 6. a target in the VISIBLE screen (index > history_size) ==
+  ok   screen-region target lands on line 202
+== 7. #{copy_cursor_line} is NOT a usable probe on wide characters ==
+  ok   copy_cursor_line truncates at the first CJK cell
+== 8. cell_start vs char_start: the CJK line distinguishes them ==
+  ok   char_start/cell_start for aa999
+== 9. regex parity: sift's match set == tmux's own search ==
+  ok   tmux finds the same number of bb1[0-9][0-9] hits as sift
+== 10. zero-width patterns terminate instead of spinning ==
+  ok   '^' returns (no infinite loop)
+
+passed 13, failed 0

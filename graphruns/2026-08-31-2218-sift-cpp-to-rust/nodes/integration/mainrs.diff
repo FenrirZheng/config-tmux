@@ -1,0 +1,13 @@
+34,36c34,41
+< //! **This is a bug-for-bug port.** Where the runbook/ADR/atlas and the shipped
+< //! binary disagree, the shipped binary wins; nothing here is "improved". The
+< //! divergences are inventoried in the port spec's §8.
+---
+> //! **This is a faithful port, with two named exceptions.** Where the
+> //! runbook/ADR/atlas and the shipped binary disagree on anything else, the
+> //! shipped binary wins — nothing else here is "improved" over the C++. The two
+> //! exceptions, both verified against the differential test suite: `Home`/`End`
+> //! now jump to the first/last match instead of leaking a literal `~` into the
+> //! pattern, and a popup resize now redraws at the new size instead of
+> //! cancelling the search. Every other divergence is inventoried in the port
+> //! spec's §8.

@@ -1,0 +1,832 @@
+diff --git a/records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh b/records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh
+index d7e8075..dc22a07 100644
+--- a/records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh
++++ b/records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh
+@@ -7,6 +7,12 @@
+ # sift runs in a second pane of a throwaway server, receives keys through
+ # send-keys, and the assertions read the TARGET pane. Also measures the filter
+ # cost against a full 100000-line scrollback.
++#
++# Sections 6-8 pin ordinal mode (ADR-0007). Every one of those eleven assertions
++# was watched to FAIL against a pre-ordinal build of tools/sift/src/main.cpp
++# (`git show <pre-ordinal>:tools/sift/src/main.cpp | g++ -std=c++20 -O2 -x c++ -`)
++# while all six older assertions still passed there. Both suites honour $SIFT,
++# which is how that control is run — never overwrite tools/target/release/sift.
+ set -u
+ SIFT=${SIFT:-$HOME/.tmux/tools/target/release/sift}
+ FIXTURE=${FIXTURE:-$(dirname "$0")/sift-fixture.sh}
+@@ -81,7 +87,160 @@ echo "  matched $n lines in ${ms}ms"
+ [ "$ms" -lt 300 ] && ok "one filter pass under 300ms (${ms}ms)" \
+                   || bad "one filter pass under 300ms" "<300ms" "${ms}ms"
+ 
+-echo "== 6. the REAL binding, driven by a real prefix keypress =="
++echo "== 6. ordinal mode: entry, buffer, out-of-range, movers, Backspace, fallthrough =="
++# ADR-0007. Nine assertions across sections 6-8 pin the mode; each one was shown
++# to redden against a pre-ordinal build of tools/sift/src/main.cpp before it was
++# kept (see the ordinal-mode note in the map record).
++#
++# N is MEASURED here, never assumed: the out-of-range case needs a pattern whose
++# hit count is small and known, so that ordinal 12 is reachable and 15 is not.
++# /[abc][abc]19[0-3]/ is rows 190-193 x aa/bb/cc = 12 OCCURRENCES over 4 lines,
++# which also means an ordinal is not a line number.
++ORD_RE='[abc][abc]19[0-3]'
++ORD_N=$(TMUX="$SOCK,0,0" "$SIFT" rows "$TARGET" "$ORD_RE" | wc -l)
++echo "  /$ORD_RE/ -> $ORD_N occurrences (want 12)"
++# Fail closed: if the fixture drifts, the assertions below are measuring
++# something else and their verdicts are meaningless.
++[ "$ORD_N" -eq 12 ] || { fail=$((fail+1)); printf '  FAIL ordinal fixture drifted\n     want: 12 hits for /%s/\n     got : %s\n' "$ORD_RE" "$ORD_N"; }
++
++t new-window -d -n ord "TMUX='$SOCK,0,0' '$SIFT' '$TARGET'"
++OP=$(t display-message -p -t ord '#{pane_id}')
++sleep 0.8
++# The header is "<prompt><typed>" + padding + "<status>". The typed field is
++# everything before the first double space — no pattern used here contains one.
++typed() { t capture-pane -p -t "$OP" | sed -n 1p | sed 's/  .*$//'; }
++key()   { t send-keys -t "$OP" "$1"; sleep 0.3; }
++lit()   { t send-keys -t "$OP" -l "$1"; sleep 0.3; }
++for ((i = 0; i < ${#ORD_RE}; i++)); do t send-keys -t "$OP" -l "${ORD_RE:i:1}"; sleep 0.06; done
++sleep 0.4
++
++key M-1
++check "M-<digit> enters ordinal mode and is itself the first digit" "goto> 1" "$(typed)"
++
++lit 2
++reach=$(typed)
++check "a bare digit extends the buffer" "goto> 12" "$reach"
++
++# Out of range is refused WITHOUT stranding what is reachable: at N=12 the same
++# leading `1` must still reach #12 (above), while `1` then `5` is not buffered.
++key BSpace
++lit 5
++check "out-of-range digit refused, reachable candidates not stranded (N=$ORD_N)" \
++      "goto> 12|goto> 1" "$reach|$(typed)"
++
++# Buffer and selection are ONE object, so every mover rewrites the buffer.
++# Home/End are deliberately absent: tmux sends ESC [ 1 ~ / ESC [ 4 ~ for them and
++# sift's CSI switch decodes only ESC [ H / ESC [ F, so the `~` lands in the
++# pattern. That is pre-existing (it predates ordinal mode) and out of scope here.
++movers=""
++for k in Down C-n PgDn Up C-p PgUp; do key "$k"; movers="$movers$(typed)|"; done
++check "Down/C-n/PgDn/Up/C-p/PgUp move the selection and the buffer follows" \
++      "goto> 2|goto> 3|goto> 12|goto> 11|goto> 10|goto> 1|" "$movers"
++
++# Leaving the mode and eating a pattern character are never the same keystroke,
++# so three Backspaces from a two-digit buffer must produce three DIFFERENT
++# states. Two digits deep on purpose: from a one-digit buffer the first pop and
++# a plain pattern-delete land on the same string, and a pre-ordinal build
++# satisfies the assertion by accident (measured — it did).
++lit 2                        # buffer is "12" again
++key BSpace; pop1=$(typed)    # pops a digit, still in the mode
++key BSpace; pop2=$(typed)    # the last pop leaves the mode, pattern untouched
++key BSpace; pop3=$(typed)    # only now does Backspace eat the pattern
++check "Backspace pops a digit; the last pop leaves the mode; the next deletes pattern" \
++      "goto> 1|regex> $ORD_RE|regex> ${ORD_RE%?}" "$pop1|$pop2|$pop3"
++lit ']'   # restore the pattern the rest of this section depends on
++
++key M-4;  entered=$(typed)
++lit x;    fell=$(typed)
++check "a non-digit printable leaves the mode and lands in the pattern" \
++      "goto> 4|regex> ${ORD_RE}x" "$entered|$fell"
++key BSpace   # drop the x again
++
++# The Goodhart case: an implementation that buffers digits perfectly while
++# rendering no column would satisfy every assertion above and still be useless,
++# because the number has to be readable before it is typed (ADR-0007). Rows are
++# "> " or "  ", then the ordinal right-aligned at the width of N.
++key M-1; lit 2
++scr=$(t capture-pane -p -t "$OP")
++ords=$(printf '%s\n' "$scr" | sed -n '2,13p' | cut -c3-4 | tr -d ' ' | paste -sd,)
++marker=$(printf '%s\n' "$scr" | sed -n 13p | cut -c1-4)
++check "the ordinal column is on screen beside its row, selection marked" \
++      "1,2,3,4,5,6,7,8,9,10,11,12|> 12" "$ords|$marker"
++
++echo "== 7. Enter jumps to the ORDINAL's occurrence — asserted on the TARGET pane =="
++# Read on the target, never on the popup's own rendering, exactly as section 2
++# does.
++#
++# Ordinal 12 first, because the buffer is already there from the column
++# assertion above and it is a real use case (reach the LAST match by number):
++# the 12th row of `sift rows` is the cc193 token at column 19.
++t send-keys -t "$OP" Enter
++sleep 0.9
++check "ordinal 12 — the last match — puts the target cursor on cc193" \
++      "19|1|1" "$(t display-message -p -t "$TARGET" '#{copy_cursor_x}|#{search_present}|#{pane_in_mode}')"
++t send-keys -X -t "$TARGET" cancel
++
++# ...but ordinal 12 is ALSO the default selection: sift seats `sel` on the last
++# hit, so a build whose push_ordinal_digit was a no-op would jump there anyway
++# and satisfy the assertion above while ordinal selection was entirely broken.
++# The load-bearing case must therefore be a NON-default ordinal. Ordinal 5 is
++# the bb191 token: column 13 (the default's is 19) on a different fixture line
++# (row191, not row193), so one assertion discriminates on both axes — a no-op
++# digit buffer lands on 19, and a line-level rather than occurrence-level
++# ordinal lands somewhere else again.
++#
++# Only STRUCTURAL fields are compared. The column is structural; so is the
++# matched line's text. The absolute scrollback index is NOT — it moves with the
++# pane's history depth and differs per throwaway server — so it is never
++# asserted for equality. #{copy_cursor_line} is safe here only because this
++# fixture line is ASCII: it truncates at the first wide character, which is
++# exactly what jump suite section 7 pins on the CJK line. Do not reuse this
++# shape there.
++t new-window -d -n ord5 "TMUX='$SOCK,0,0' '$SIFT' '$TARGET'"
++OP=$(t display-message -p -t ord5 '#{pane_id}')
++sleep 0.8
++for ((i = 0; i < ${#ORD_RE}; i++)); do t send-keys -t "$OP" -l "${ORD_RE:i:1}"; sleep 0.06; done
++sleep 0.4
++key M-5
++check "M-5 selects the non-default ordinal 5" "goto> 5" "$(typed)"
++t send-keys -t "$OP" Enter
++sleep 0.9
++got=$(t display-message -p -t "$TARGET" \
++      '#{copy_cursor_x}|#{search_present}|#{pane_in_mode}|#{copy_cursor_line}' | sed 's/ *$//')
++check "ordinal 5 lands on bb191 (col 13, row191 line) — not the default cc193/col 19" \
++      "13|1|1|row191 aa191 bb191 cc191" "$got"
++t send-keys -X -t "$TARGET" cancel
++
++echo "== 8. the header survives a narrow pane (74x20) =="
++# The regression test for 2026-09-01: the footer had grown to 75 cells with no
++# width guard, so at any sift width <= 74 it wrapped, the pane scrolled, and the
++# header — the `goto>` prompt AND the match count — left the screen. Ordinal mode
++# was fully functional and completely invisible, and every assertion above, all
++# written at 100 columns, passed straight through it.
++#
++# Asserted as screen LINE 1, not as a grep over the whole screen: a grep passes
++# while the header sits anywhere, and the whole point is that it is on line 1.
++t new-session -d -s narrow -x 74 -y 20
++t new-window -d -t narrow -n ordn "TMUX='$SOCK,0,0' '$SIFT' '$TARGET'"
++NP=$(t display-message -p -t narrow:ordn '#{pane_id}')
++sleep 0.8
++geo=$(t display-message -p -t "$NP" '#{pane_width}x#{pane_height}')
++echo "  narrow sift pane: $geo"
++# Fail closed: a pane that is not actually narrow cannot reproduce the defect.
++[ "$geo" = "74x20" ] || { fail=$((fail+1)); printf '  FAIL narrow harness geometry\n     want: 74x20\n     got : %s\n' "$geo"; }
++for ((i = 0; i < ${#ORD_RE}; i++)); do t send-keys -t "$NP" -l "${ORD_RE:i:1}"; sleep 0.06; done
++sleep 0.4
++t send-keys -t "$NP" M-1
++sleep 0.6
++line1=$(t capture-pane -p -t "$NP" | sed -n 1p)
++case "$line1" in
++  "goto> "*) ok "at 74x20, screen line 1 is still the goto> header" ;;
++  *) bad "at 74x20, screen line 1 is still the goto> header" \
++         "line 1 begins with 'goto> '" "$line1" ;;
++esac
++t kill-session -t narrow
++
++echo "== 9. the REAL binding, driven by a real prefix keypress =="
+ # The regression test for 2026-08-28: tests 1-4 launch sift in a window with the
+ # pane id already substituted by the shell, so they never exercise the binding.
+ # `display-popup` does NOT format-expand its shell-command, so a binding passing
+diff --git a/records/2026-09-01-1330-sift-ordinal-selection/sift-ordinal-selection.org b/records/2026-09-01-1330-sift-ordinal-selection/sift-ordinal-selection.org
+index ca2de1e..9795c57 100644
+--- a/records/2026-09-01-1330-sift-ordinal-selection/sift-ordinal-selection.org
++++ b/records/2026-09-01-1330-sift-ordinal-selection/sift-ordinal-selection.org
+@@ -40,10 +40,31 @@ verification suites, and documented where the other =sift= behaviour is document
+   =records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-{jump,live}.sh=. *Do
+   not remove the control case at the top of =verify-sift-jump.sh=* — without it a
+   misaimed =$TMUX= silently drives the user's real tmux server.
++- *Two pre-existing defects surfaced this run, neither introduced nor fixed by
++  t2-t4*: (1) =Home=/=End= have never worked in sift — tmux emits =ESC [ 1 ~= /
++  =ESC [ 4 ~=; sift's CSI decoder handles only =ESC [ H= / =ESC [ F=, so the
++  =default:= arm returns =Key::None= without consuming the trailing =~=, which then
++  lands in the pattern as printable text. Measured directly with =cat -v= on a
++  throwaway server, and again live (=send-keys End= produced =regex> hitline~=). It
++  is why =sync_ordinal()= on =Key::Home=/=Key::End= is dead in practice, and why
++  [[#t3][t3]] could not assert those two movers; =runbooks/sift.md='s key table now
++  says so ("do not work — see Troubleshoot"). A candidate for its own ticket. (2)
++  =tools/atlas/sift.org= carries 4 Crux excerpts where the atlas format contract
++  states <=3 — pre-existing, predates this effort, flagged rather than silently
++  restructured.
+ 
+ * Decisions so far
+ 
+ - [[#t1][Confirm Alt-digit survives a real keypress through alacritty]] — Left Alt-digit survives keyboard -> alacritty -> tmux -> sift intact as ESC+digit; ADR-0007's entry channel is confirmed on the C++ binary
++- [[#t2][Build ordinal mode into the C++ sift]] — ordinal column + goto-mode built in
++  =tools/sift/src/main.cpp= (+157/-9); an independent verifier's footer-width regression
++  was found and fixed; atlas node re-anchored in the same change
++- [[#t3][Assert ordinal mode in the verification suites]] — 11 new assertions (live 6/0
++  -> 17/0, jump unchanged 13/0), proven capable of failing via a pre-ordinal negative
++  control (11/11 fail, 19/19 pre-existing pass)
++- [[#t4][Document ordinal mode where the rest of sift is documented]] — runbook updated
++  and validated by a use-node reaching ground truth from the doc alone; two real
++  documentation gaps recorded, not closed
+ 
+ * Not yet specified
+ 
+@@ -125,10 +146,10 @@ falls into =Key::None=, and that is where ordinal-mode entry attaches.
+ 
+ - review: settled live with user (physical keypress, 2026-09-01), plus probe-verified control on the C++ binary (3/3)
+ 
+-** TODO Build ordinal mode into the C++ sift :task:
++** DONE Build ordinal mode into the C++ sift :task:
+ :PROPERTIES:
+ :CUSTOM_ID: t2
+-:ASSIGNEE:
++:ASSIGNEE: fenrir@graphrun-1502
+ :BLOCKED_BY:
+ :END:
+ 
+@@ -162,10 +183,88 @@ Per the map's Notes, the atlas node =tools/atlas/sift.org= is updated in this sa
+ change — including its =:lines= source excerpts, which the Rust revert already made
+ stale.
+ 
+-** TODO Assert ordinal mode in the verification suites :task:
++*** Resolution
++
++Built in =tools/sift/src/main.cpp= in two slices — the always-rendered ordinal column,
++then the mode itself. Final diff *+157 / -9*, one file.
++
++- Row layout is now ="> "= (2) + ordinal (=ordw=) + space + line number (=numw=) + space
++  + text, so the text field is =textw = w - numw - ordw - 4= (was =w - numw - 3=). The
++  ordinal renders cyan, the line number stays dim, so the two are distinguishable at a
++  glance. =ordw= is recomputed every =draw()= from =u.hits.size()=, so the column
++  jitters with /N/ exactly as ADR-0007 records and accepts — nothing pins it.
++- Entry is the =c1= branch of =read_key()=, as [[#t1][t1]] predicted: =ESC= +
++  ='0'..'9'= now returns a new =Key::AltDigit= carrying the digit, where it previously
++  fell into =Key::None=. The 40 ms =ESC_SEQ_MS= window is untouched.
++- =Ui::goto_buf= is the entire mode state — non-empty *is* the mode, so there is no
++  separate flag that could drift out of sync. Helpers: =in_ordinal_mode=,
++  =ordinal_of=, =push_ordinal_digit=, =sync_ordinal=. One bounds check in
++  =push_ordinal_digit= implements all four refusals at once: out-of-range, =Alt-0=,
++  empty list, invalid pattern.
++- =draw()= selects the live prompt (=goto> = / =regex> =), recomputes =plen= from it,
++  and parks the cursor at the end of whatever is being typed. Measured =cursor_x=: 14
++  for =regex> hitline=, 7 for =goto> 1=, 8 for =goto> 12=.
++- =jump()=, =run_rows()=, =refilter()= and =render_line()= untouched. =sift rows= gains
++  nothing, as ADR-0007 says it should not.
++- Build: =cmake --preset release=, *zero warnings* under
++  =-Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wold-style-cast -Wshadow=.
++- Suites unmoved by the implementation: *jump 13/0, live 6/0* before and after.
++- =tools/atlas/sift.org= updated in the same change, as the map's Notes require: all
++  four Crux =:lines:= excerpts re-anchored (449-459 -> 465-475, 465-473 -> 481-489,
++  492-494 -> 508-510, =parse_fields<N>= unchanged at 220-231) and verified
++  byte-for-byte against the file; the =main.cpp= sha256 in =:SOURCES:= recomputed.
++
++*Three decisions taken beyond ADR-0007's literal text* — recorded explicitly, since a
++future reader cannot derive them from the ADR:
++
++1. *The invariant extended to every mover.* ADR-0007 names only the arrow keys as
++   rewriting the buffer, but its stated invariant — "=goto>= always names where the
++   cursor actually is" — does not hold unless every mover does, so =sync_ordinal()= is
++   called from =Up=, =Down=, =Home=, =End= and the =PgUp=/=PgDn= block.
++2. *=C-w= / =C-u= clear the buffer before touching the pattern.* The ADR does not name
++   them. Chosen over ignoring them so the load-bearing property "no exit from the mode
++   happens after the pattern changes" stays true — both call =refilter()=.
++3. *=Alt-<digit>= pressed while already in the mode extends the buffer*, exactly like
++   a bare digit, rather than restarting it.
++
++*A blocking regression was found by an independent verifier and fixed* — the most
++useful finding in this ticket:
++
++The new footer (=↑↓ select  left-Alt-digit goto  Enter jump  Esc cancel  C-w word  C-u
++clear=) is 75 display cells, up from 54, and =draw()= emitted it with *no width guard
++at all*. =draw()= is contracted to emit exactly =h= lines — header + =h-2= rows +
++footer — so at any sift width <= 74 the footer wrapped, the pane scrolled, and the
++*header went off the top of the screen*, taking the =goto>= prompt and the match count
++with it. The user would be in a mode with no on-screen evidence of it.
++=claude.conf:207= sizes the popup at =-w 95%=, so any tmux client narrower than ~81
++columns was affected; the user's own 282-column client was not. It contradicted
++ADR-0007's settled "the mode is never invisible", so it blocked.
++
++Fixed by a new =utf8_fit(std::string_view, int budget)= — the forward inverse of the
++existing =utf8_cells=, built from the same decoder, cutting on a character boundary;
++=kDim=/=kReset= are zero-width and are neither charged against the budget nor cut. The
++footer /text/ is unchanged, so ADR-0007's "left Alt" wording and every doc quoting the
++footer still match the binary.
++
++Verified by a width sweep at w = 20, 30, 40, 60, 74, 75, 100, 265 — *8/8 pass*; and the
++sweep was shown to have teeth by running it against an unguarded control binary
++differing only in the reverted guard line: *5/8 FAIL*, at exactly the predicted w=75
++boundary. Worth saying plainly: the verifier's behavioural lens passed *25/25 at 100
++columns* while the feature was invisible at 74. Only a lens aimed at "can the user
++actually see the number" caught it.
++
++The independent verifier walked all 25 of ADR-0007's settled decisions with pasted
++evidence from the running binary: 23 implemented, 1 out-of-scope (the ordinal column
++width question — see Not yet specified), 1 blocking (the footer, now fixed), plus the
++docs gap that [[#t4][t4]] then closed.
++
++- review: independent verifier (25 decisions, pasted captures) + orchestrator
++  re-verification of every node against its on-disk artifacts
++
++** DONE Assert ordinal mode in the verification suites :task:
+ :PROPERTIES:
+ :CUSTOM_ID: t3
+-:ASSIGNEE:
++:ASSIGNEE: fenrir@graphrun-1502
+ :BLOCKED_BY: t2
+ :END:
+ 
+@@ -192,10 +291,64 @@ re-proving per-assertion.
+ Resolution records the new pass counts for both suites, replacing the 13/0 and 6/0 the
+ runbook and the atlas node quote.
+ 
+-** TODO Document ordinal mode where the rest of sift is documented :task:
++*** Resolution
++
++=records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh= gains *11
++assertions* in three new sections: section 6 mode mechanics (7), section 7 =Enter= on
++the TARGET pane (3), section 8 the narrow pane (1). The pre-existing real-binding
++section moved 6 -> 9 deliberately — it attaches a 282x71 client to the throwaway
++server, which would resize the sessions section 8 depends on.
++
++*New counts: jump 13/0, live 17/0* — replacing the 13/0 and 6/0 that the runbook and
++the atlas node quoted (both now updated to 13 / 17, and the sanitizer section's "19
++assertions" to 30).
++
++=verify-sift-jump.sh= gains nothing, with a stated reason: ADR-0007 leaves =sift rows=
++untouched, so the k-th-row-is-ordinal-k mapping is a property of the already-pinned row
++ordering rather than of ordinal mode, and an assertion over it would pass identically
++against a pre-ordinal binary — vacuous by construction. Its control case ("harness
++targets the throwaway server") is intact.
++
++*The acceptance criterion was a negative control, not a green bar.* A pre-ordinal
++binary was built from =git show HEAD:tools/sift/src/main.cpp= (confirmed pre-ordinal by
++=grep -c goto_buf= -> 0) and both suites run against it: *11/11 new assertions FAIL,
++19/19 pre-existing pass*. Against the real binary: 17/0 and 13/0. Every new assertion is
++therefore shown capable of both failing and passing, per-assertion.
++
++*Two assertions that looked fine and were not — both caught only by the control:*
++
++1. The first =Backspace= assertion (one-digit buffer, two pops) *passed against the
++   pre-ordinal baseline by coincidence*: with a stale trailing digit in the pattern, a
++   plain pattern-delete produced byte-identical strings to the ordinal semantics.
++   Rewritten to drive a two-digit buffer through three pops asserting three distinct
++   states.
++2. *The default-selection trap.* =refilter()= seats the selection on the last hit, so
++   ordinal 12 of /N/=12 *is* the default — a build whose =push_ordinal_digit= was a
++   no-op would still land there. Found by the use-node ([[#t4][t4]]), which noticed the
++   match was already selected before it pressed anything. Section 7's discriminator is
++   now ordinal *5*: column 13 on =row191=, differing from the default on *both* the
++   column and the line axis. The control shows the trap concretely — the pre-ordinal
++   binary lands on =19|1|1|row193 ...=, i.e. exactly the default. Note for the future:
++   any edit changing the fixture's /N/ or the hit order must re-derive a non-default
++   ordinal rather than reuse 12.
++
++Only structural fields are compared — the column and the matched line's text. The
++absolute scrollback index (193 vs 195 across servers) is volatile and never asserted
++for equality. The N=12 fixture pattern =[abc][abc]19[0-3]= is re-measured at runtime
++with a fail-closed guard if it drifts, and it spans 4 lines x 3 occurrences, so an
++ordinal is provably not a line number.
++
++*UNASSERTED, recorded rather than dropped*: =Home=/=End= as movers — both keys have
++never worked in sift (see Notes). The mover assertion covers
++=Down=/=C-n=/=PgDn=/=Up=/=C-p=/=PgUp= instead, with the exclusion written into the
++suite as a comment beside it.
++
++- review: negative control against a pre-ordinal binary, 11/11 fail and 19/19 pass
++
++** DONE Document ordinal mode where the rest of sift is documented :task:
+ :PROPERTIES:
+ :CUSTOM_ID: t4
+-:ASSIGNEE:
++:ASSIGNEE: fenrir@graphrun-1502
+ :BLOCKED_BY: t2
+ :END:
+ 
+@@ -214,3 +367,36 @@ misleading.
+ 
+ Out of scope, as charted: the missing =Sift= entry in =CONTEXT.org= — a real gap that
+ predates this effort.
++
++*** Resolution
++
++=runbooks/sift.md=: the key table gains a =left Alt-<digit>= row pointing at a new
++*Ordinal mode* sub-table covering entry and its three refusals, digit extension and
++the silent out-of-range refusal, the movers rewriting the buffer, =Backspace= popping
++and the last pop leaving the mode, =C-w=/=C-u= clearing the buffer first,
++=Alt-<digit>= extending while already in the mode, the non-digit fallthrough, =Esc=
++leaving the mode, and =Enter= unchanged. The =goto>= prompt is explained as the sole
++in-popup indicator that the mode is live, with the match count still on the right.
++Counts updated to 13 / 17 / 30.
++
++*The decision this ticket asks to record.* The footer says =left-Alt-digit goto= —
++"left" specifically, because =~/.config/keyd/default.conf:40= gives =rightalt= to the
++fcitx5 IME toggle at the kernel level, so a footer saying only "Alt" would mislead a
++reader who tries the right-hand key. The =goto>= prompt is the only in-popup
++indicator; *no further indicator was invented*, because the map defers that question
++on purpose (see Not yet specified). That deferral stays untouched.
++
++*Validated by use, not by inspection.* A fresh agent was given /only/
++=runbooks/sift.md= — no source, no ADR, no suites — and told to reach the 12th of 12
++matches. It used =M-1= =2= =Enter=, derived from the runbook alone, and landed on
++=cc193= at column 19, matching ground truth computed independently beforehand from
++=sift rows=. It also reported two real gaps, which are *not* closed and are recorded
++rather than dropped:
++
++- the runbook documents the popup case only, so launching =sift %0= interactively from
++  a different window leaves it unstated which pane holds the resulting copy-mode state;
++- the key table does not say whether bare-digit buffering has any inter-keystroke
++  timing sensitivity.
++
++- review: use-node given the runbook alone, landed on independently-computed ground
++  truth
+diff --git a/runbooks/sift.md b/runbooks/sift.md
+index 9ed40ca..eba67cf 100644
+--- a/runbooks/sift.md
++++ b/runbooks/sift.md
+@@ -16,11 +16,40 @@ match highlighted; `Enter` sends the pane to the one you picked.
+ |---|---|
+ | any character | extends the pattern; the list refilters |
+ | `↑` / `↓`, `C-p` / `C-n` | move the selection |
+-| `PgUp` / `PgDn`, `Home` / `End` | page, or jump to the first / last match |
++| `PgUp` / `PgDn` | page |
++| `Home` / `End` | **do not work** — see Troubleshoot |
+ | `Backspace`, `C-w`, `C-u` | delete a character / a word / the whole pattern |
++| left `Alt-<digit>` | enter **ordinal mode**, see below |
+ | `Enter` | jump the pane to the selected occurrence |
+ | `Esc`, `C-g`, `C-c` | cancel — the pane is not touched |
+ 
++### Ordinal mode — pick a match by number
++
++Every row carries an ordinal, its position in the current result set (1..*N*).
++Left `Alt-<digit>` enters **ordinal mode**, and the keypress is itself the
++first digit; the mode is the fastest way to reach an arbitrary candidate
++without walking the list one row at a time. Right Alt does **not** work for
++this — `~/.config/keyd/default.conf:40` gives `rightalt` to the fcitx5 IME
++toggle at the kernel level, so it never reaches tmux on this machine, and the
++footer names "left Alt" specifically for that reason.
++
++| key (while in ordinal mode) | does |
++|---|---|
++| left `Alt-<digit>` | enters the mode; that digit is the first buffered digit. Ignored on `Alt-0`, on an empty list, or on an invalid pattern — none of those names a candidate |
++| bare digit | extends the buffer; a digit that would push the ordinal past *N* is simply not buffered — there is no error to see |
++| left `Alt-<digit>` (already in the mode) | extends the buffer exactly like a bare digit |
++| `↑` / `↓`, `C-p` / `C-n`, `PgUp` / `PgDn` | move the selection **and rewrite the buffer**, so the prompt always names where the cursor actually is |
++| `Backspace` | pops one digit; popping the last digit leaves the mode. The *next* `Backspace` is the one that starts deleting the pattern |
++| `C-w` / `C-u` | clear the buffer first, before touching the pattern |
++| any other non-digit printable | leaves the mode and lands in the pattern |
++| `Esc` | leaves the mode (outside the mode it still cancels sift) |
++| `Enter` | jumps, unchanged |
++
++While the mode is live the prompt reads `goto>` instead of `regex>` and shows
++the buffered digits; the right-hand status keeps showing the match count, so
++*N* stays on screen. **The `goto>` prompt is the only indicator that the mode
++is live** — there is no separate in-popup marker beyond it.
++
+ `sift` takes an optional pane id (`sift %5`); with none it searches the client's
+ active pane, which is how the key binding uses it. That is not a convenience —
+ a popup **cannot** be handed its pane through `#{pane_id}`, because
+@@ -87,7 +116,7 @@ Two things worth knowing about where the build output goes:
+ 
+ ```bash
+ bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh   # 13 assertions
+-bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh   #  6 assertions
++bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh   # 17 assertions
+ ```
+ 
+ Both spin up a throwaway tmux server and clean it up. `verify-sift-jump.sh`
+@@ -97,7 +126,7 @@ target pane, so it would catch a wrong wiring that the first script cannot.
+ 
+ ### Under the sanitizers
+ 
+-Both scripts honour `$SIFT`, so the same 19 assertions can be re-run against an
++Both scripts honour `$SIFT`, so the same 30 assertions can be re-run against an
+ ASan + UBSan + LSan build. The sanitizer target is deliberately named
+ `sift-asan`: it shares the output directory with the release binary, and an
+ instrumented binary silently taking over `prefix /` would be a slow, confusing
+@@ -168,6 +197,13 @@ which is what tmux's own search uses. Perl-isms are not available: `\d`, `\w`,
+ `\s` and lazy quantifiers are not extended-regex syntax. Use `[0-9]`, `[[:alnum:]_]`,
+ `[[:space:]]`.
+ 
++**`Home` / `End` do nothing, or leak a `~` into the pattern** — this is a known,
++pre-existing defect, **not caused by ordinal mode and not fixed here**. tmux
++emits `ESC [ 1 ~` for `Home` and `ESC [ 4 ~` for `End`, but sift's CSI decoder
++only handles `ESC [ H` and `ESC [ F`; the key is dropped and its trailing `~`
++lands in the pattern as ordinary text. Use `PgUp` / `PgDn` or `↑` / `↓` /
++`C-p` / `C-n` instead.
++
+ **The header says `⚠ visible screen only`** — the pane is on the alternate
+ screen; there is no scrollback to search. Leave the full-screen program first.
+ 
+diff --git a/tools/atlas/sift.org b/tools/atlas/sift.org
+index 45df9f5..b4e174c 100644
+--- a/tools/atlas/sift.org
++++ b/tools/atlas/sift.org
+@@ -13,13 +13,15 @@ A popup cannot be *told* which pane it belongs to, which is why =sift= takes no
+ 
+ The C++ is C++20 and dependency-free, and holds itself to a shape worth knowing before opening the file: every OS resource — the tmux pipe, the compiled regex, the terminal's raw mode — is owned by an RAII type (=Fd=, =Regex=, =RawMode=), so no exit path releases anything by hand and there is no =atexit=; fallible lookups return =std::optional= rather than taking a =bool* ok=; reader parameters are =std::string_view=; and the UTF-8 decoder is =constexpr= and carries its own unit tests as =static_assert=, so the byte/character/cell confusion this tool exists to avoid fails the *build* rather than the pane. The tmux command list is assembled by a concept-constrained variadic =chain()= that owns the =;= separator. =CMakeLists.txt= holds the source to =-Wconversion -Wsign-conversion -Wold-style-cast -Wshadow= on top of =-Wall -Wextra -Wpedantic=, and the =asan= preset builds an ASan+UBSan twin named =sift-asan= — a different name on purpose, because it shares =target/release/= with the binary =prefix /= runs. Both builds go through =CMakePresets.json= (=cmake --preset release= / =--preset asan=), which pins the Ninja generator and the build directory. Ninja is chosen for the no-op rebuild (16 ms against make's 56 ms), not for compile speed: one translation unit gives a build scheduler nothing to parallelise, and a full build measures the same either way.
+ 
+-There is no =tmuxlib= on this side. The only pieces re-implemented in C++ are the =execvp=-based tmux spawn (an argv vector, never a shell string) and the literal =-l= message helper — which together are how =sift= discharges the same format-context proof obligation =seek= does: it stamps no pane options and renders pane text only into its own popup, so there is no format context to escape from and nothing has to be filtered. =sift rows <pane> <regex>= is the headless seam, mirroring =cc-fleet rows=; the behaviour above is pinned by =records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh= (13 assertions, including the jump arithmetic over CJK) and =verify-sift-live.sh= (6 assertions over real keystrokes, the last driving the shipped binding itself) — those are what redden if the sequence shifts.
++ADR-0007 gave the keystroke loop its first mode: left =Alt-<digit>= claims a match by its ordinal in the result list instead of walking arrows O(N) times. The entry key was free to claim because those bytes were already being decoded and discarded — =read_key()='s =ESC= branch fell through to =Key::None= for any byte that wasn't =[= or =O=, so teaching it =Alt-<digit>= added a case, not a new read. The whole mode lives in one field, =Ui::goto_buf=: non-empty *is* ordinal mode, so there is no separate flag that could drift out of sync with it. Buffer and selection are kept as one object — every digit narrows =u.sel= immediately (=push_ordinal_digit=), and every key that moves the selection rewrites the buffer from it (=sync_ordinal=) — so =Enter= confirms an ordinal already on screen rather than wagering on one that might not exist, and there is no "no such match" error path to write. =draw()= grew a cyan ordinal column that renders always, at the width of the current /N/, left of the still-dim line-number column, and it now swaps its live prompt between =regex>= and =goto>= so the mode is never invisible. That prompt swap is also why =draw()= grew a footer-width guard: the function is contracted to emit exactly =h= lines, so a footer one cell over the pane width wraps, scrolls the pane, and carries the header — the =goto>= prompt included — off the top of the screen. =utf8_fit()= is the forward inverse of =utf8_cells()=, cutting the footer string on a character boundary rather than a byte one.
++
++There is no =tmuxlib= on this side. The only pieces re-implemented in C++ are the =execvp=-based tmux spawn (an argv vector, never a shell string) and the literal =-l= message helper — which together are how =sift= discharges the same format-context proof obligation =seek= does: it stamps no pane options and renders pane text only into its own popup, so there is no format context to escape from and nothing has to be filtered. =sift rows <pane> <regex>= is the headless seam, mirroring =cc-fleet rows=; the behaviour above is pinned by =records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh= (13 assertions, including the jump arithmetic over CJK) and =verify-sift-live.sh= (17 assertions over real keystrokes, the last driving the shipped binding itself) — those are what redden if the sequence shifts.
+ 
+ * Crux
+ 
+ =goto-line= is a scroll offset from the bottom of the history, not a line number, so the cursor row has to be pinned with =history-top= first; only then is =history_size - line= an exact seek. =history_size= is re-read here rather than reused from the capture, because it moves while the pane keeps printing:
+ 
+-#+begin_src cpp :file sift/src/main.cpp :lines 449-459
++#+begin_src cpp :file sift/src/main.cpp :lines 465-475
+     std::vector<std::string> cmds;
+     chain(cmds, "copy-mode", "-t", pane);
+     chain(cmds, "send-keys", "-X", "-t", pane, "history-top");
+@@ -35,7 +37,7 @@ There is no =tmuxlib= on this side. The only pieces re-implemented in C++ are th
+ 
+ The chain-preserving step: the pattern is handed to tmux, which is what makes the highlight, =n= / =N= and seek's grab keys work afterwards. The whole sequence goes out as one command list while the popup is still up:
+ 
+-#+begin_src cpp :file sift/src/main.cpp :lines 465-473
++#+begin_src cpp :file sift/src/main.cpp :lines 481-489
+     if (char_end > 0)
+         chain(cmds, "send-keys", "-X", "-N", std::to_string(char_end), "-t", pane, "cursor-right");
+ 
+@@ -49,7 +51,7 @@ The chain-preserving step: the pattern is handed to tmux, which is what makes th
+ 
+ Verification is positional, never textual — =#{copy_cursor_line}= truncates at the first wide character, so comparing text would false-alarm on every CJK line. All five fields come from one =display-message= call so they describe one instant:
+ 
+-#+begin_src cpp :file sift/src/main.cpp :lines 492-494
++#+begin_src cpp :file sift/src/main.cpp :lines 508-510
+     const auto f      = parse_fields<5>(*s);
+     const long landed = f[0] - f[1] + f[2];
+     return f[4] == 1 && landed == line && f[3] == cell_start;
+@@ -78,7 +80,7 @@ std::array<long, N> parse_fields(std::string_view s) {
+ 
+ * Sources
+ :SOURCES:
+-:sift/src/main.cpp: sha256:5677321aa1bd9a5746e59c9c2112c68e43d3850fa43f8d8c0c3d6c54d2895663
++:sift/src/main.cpp: sha256:1dd6902ec19e05bd2ccae4bf491e25cf85ee3960ca382f002d216aba1f8ab0b1
+ :sift/CMakeLists.txt: sha256:23d7c42484e7ba32b11e5c926d17faf8995bfd55ac14d115ad1c0872d4d9c41c
+ :sift/CMakePresets.json: sha256:a02d8e56b730a2a8179efbf0846261942716f54e7af8845f54b6f6802f87bad5
+ :END:
+diff --git a/tools/sift/src/main.cpp b/tools/sift/src/main.cpp
+index 81431d8..0e36a56 100644
+--- a/tools/sift/src/main.cpp
++++ b/tools/sift/src/main.cpp
+@@ -307,6 +307,22 @@ static_assert(utf8_chars("中文 aa", 9) == 5);   // 中 文 SP a a
+     return n;
+ }
+ 
++// Inverse of utf8_cells: the byte length of the longest prefix of `s` that
++// fits in `budget` cells. Same decoder and same width table, walked forwards
++// until the budget runs out, so the cut always lands on a character boundary —
++// a byte-boundary cut would emit half of a `↑`.
++[[nodiscard]] size_t utf8_fit(std::string_view s, int budget) {
++    size_t i = 0;
++    for (int n = 0; i < s.size();) {
++        const auto d = utf8_decode(s, i);
++        const int  w = cell_width(d.cp);
++        if (n + w > budget) break;
++        n += w;
++        i += static_cast<size_t>(d.len);
++    }
++    return i;
++}
++
+ // Which pane are we searching?
+ //
+ // The obvious answer — have the key binding pass `#{pane_id}` — does not work.
+@@ -567,7 +583,8 @@ struct TermSize {
+ // ── key decoding ───────────────────────────────────────────────────────────
+ 
+ enum class Key {
+-    None, Enter, Esc, Backspace, Up, Down, PgUp, PgDn, Home, End, KillWord, KillLine, Text
++    None, Enter, Esc, Backspace, Up, Down, PgUp, PgDn, Home, End, KillWord, KillLine, Text,
++    AltDigit   // ESC + '0'..'9', i.e. left Alt-<digit> — ordinal mode (ADR-0007)
+ };
+ 
+ struct Input {
+@@ -610,6 +627,13 @@ Input read_key() {
+         // brief window to arrive.
+         const int c1 = read_byte(40);
+         if (c1 < 0) return key_only(Key::Esc);
++        // ESC followed by a digit is left Alt-<digit> — alacritty's
++        // Meta-as-ESC-prefix default, measured on this machine through a real
++        // keypress. ADR-0007 claims those bytes for ordinal mode; until now
++        // they fell through to Key::None below and were discarded. The 40 ms
++        // window above is still the only thing separating this from a bare Esc.
++        if (c1 >= '0' && c1 <= '9')
++            return Input{.key = Key::AltDigit, .text = std::string(1, static_cast<char>(c1))};
+         if (c1 != '[' && c1 != 'O') return key_only(Key::None);
+         const int c2 = read_byte(40);
+         if (c2 < 0) return key_only(Key::Esc);
+@@ -653,6 +677,11 @@ constexpr std::string_view kUnbold      = "\x1b[22m";
+ constexpr std::string_view kReset       = "\x1b[0m";
+ constexpr std::string_view kInvertOn    = "\x1b[7m";
+ constexpr std::string_view kInvertOff   = "\x1b[27m";
++// The ordinal column is the one number the user types (ADR-0007), so it is
++// coloured rather than dimmed — a second dim number beside the line number
++// would be indistinguishable from it at a glance.
++constexpr std::string_view kCyan        = "\x1b[36m";
++constexpr std::string_view kDefaultFg   = "\x1b[39m";
+ 
+ // Render one capture line into `width` cells, guaranteeing the match is on
+ // screen (long lines scroll horizontally so a hit at column 400 is still seen)
+@@ -708,6 +737,7 @@ struct Ui {
+     size_t                   top    = 0;   // first visible hit
+     bool                     capped = false;
+     std::string              re_error;     // non-empty == the pattern does not compile
++    std::string              goto_buf;     // non-empty == ordinal mode is live (ADR-0007)
+ };
+ 
+ void refilter(Ui& u) {
+@@ -732,6 +762,56 @@ void refilter(Ui& u) {
+     u.top = 0;
+ }
+ 
++// ── ordinal mode ───────────────────────────────────────────────────────────
++//
++// The buffer and the selection are ONE object (ADR-0007): u.goto_buf holds the
++// digits typed so far and u.sel is always that ordinal minus one, so Enter
++// confirms something already on screen rather than wagering on a number. A
++// non-empty buffer IS the mode — no second flag, because the mode is entered
++// with its first digit already in hand and leaves the instant the last one is
++// popped.
++//
++// Load-bearing, not incidental: every exit from the mode happens BEFORE the
++// pattern can change, so refilter() can never run while a buffer is alive and
++// the ordinals it names are frozen for the whole life of that buffer. That is
++// what removes the "no such match" error path — keep it true of any key added
++// later.
++
++[[nodiscard]] bool in_ordinal_mode(const Ui& u) noexcept { return !u.goto_buf.empty(); }
++
++// The 1-based ordinal a digit buffer names. Every digit in the buffer was
++// bounds-checked against u.hits.size() (<= kMatchCap, so at most five digits)
++// before it was appended, which is why this needs no overflow guard.
++[[nodiscard]] size_t ordinal_of(std::string_view digits) noexcept {
++    size_t v = 0;
++    for (const char c : digits) v = v * 10 + static_cast<size_t>(c - '0');
++    return v;
++}
++
++// Start or extend the buffer with one digit. A keystroke that would push the
++// ordinal past N is NOT buffered — buffer and selection are left exactly as
++// they were, and there is no error to render. With N = 12, `Alt-1` then `2`
++// reaches 12 (1 and 12 are both in range) while `Alt-1` then `5` stays on 1.
++// Ordinal 0 is the same refusal: `Alt-0` names no candidate, and neither does
++// an empty list or a pattern that does not compile.
++void push_ordinal_digit(Ui& u, char digit) {
++    if (u.hits.empty() || !u.re_error.empty()) return;
++    std::string next = u.goto_buf;
++    next.push_back(digit);
++    const size_t ord = ordinal_of(next);
++    if (ord == 0 || ord > u.hits.size()) return;
++    u.goto_buf = std::move(next);
++    u.sel      = ord - 1;
++}
++
++// Every key that MOVES the selection rewrites the buffer to the new selection's
++// ordinal, so `goto>` always names where the cursor actually is. ADR-0007
++// states that invariant for the arrow keys; it only holds if PgUp/PgDn and
++// Home/End keep it too.
++void sync_ordinal(Ui& u) {
++    if (in_ordinal_mode(u)) u.goto_buf = std::to_string(u.sel + 1);
++}
++
+ void draw(Ui& u) {
+     const auto [w, h] = term_size();
+     if (h < 4 || w < 20) return;
+@@ -755,9 +835,16 @@ void draw(Ui& u) {
+                                           (u.capped ? "+ matches (capped)" : " matches");
+     if (u.geom.alternate) status = "⚠ visible screen only · " + status;
+ 
+-    const int plen = 7 + utf8_chars(u.pattern, u.pattern.size());
++    // The prompt names the live mode, so ordinal mode is never invisible. plen
++    // is that prompt (ASCII, so bytes == characters) plus whatever is being
++    // typed into it, and it is what parks the real cursor below — a plen
++    // computed from the wrong prompt puts the cursor in the wrong cell.
++    const std::string_view prompt = in_ordinal_mode(u) ? "goto> " : "regex> ";
++    const std::string&     typed  = in_ordinal_mode(u) ? u.goto_buf : u.pattern;
++
++    const int plen = static_cast<int>(prompt.size()) + utf8_chars(typed, typed.size());
+     const int slen = utf8_chars(status, status.size());
+-    o += std::format("{}regex> {}{}", kBold, u.pattern, kReset);
++    o += std::format("{}{}{}{}", kBold, prompt, typed, kReset);
+     if (const int gap = w - plen - slen; gap > 0) {
+         o.append(static_cast<size_t>(gap), ' ');
+         o += std::format("{}{}{}", kDim, status, kReset);
+@@ -768,20 +855,51 @@ void draw(Ui& u) {
+     const int numw = static_cast<int>(
+         std::to_string(u.lines.empty() ? 0 : u.lines.size() - 1).size());
+ 
++    // Match ordinal: the row's 1-based position in u.hits, so the column is
++    // exactly as wide as N. Unlike numw this DOES jitter — N changes on every
++    // refilter — which ADR-0007 records and accepts. An empty list renders no
++    // rows, so the width is never consulted in that case.
++    const int ordw = static_cast<int>(std::to_string(u.hits.size()).size());
++
++    // Row layout, and the whole of the width budget:
++    //   "> " or "  "   2
++    //   ordinal        ordw
++    //   space          1
++    //   line number    numw
++    //   space          1
++    //   text           the rest
++    const int textw = w - numw - ordw - 4;
++
+     for (int r = 0; r < list_rows; ++r) {
+         const size_t idx = u.top + static_cast<size_t>(r);
+         if (idx >= u.hits.size()) { o += "\r\n"; continue; }
+         const Hit& hit = u.hits[idx];
+ 
+         o += (idx == u.sel) ? std::format("{}> ", kBold) : "  ";
++        o += std::format("{}{:>{}}{} ", kCyan, idx + 1, ordw, kDefaultFg);
+         o += std::format("{}{:>{}}{} ", kDim, hit.line, numw, kUnbold);
+         o += render_line(u.lines[static_cast<size_t>(hit.line)],
+-                         hit.byte_start, hit.byte_end, w - numw - 3);
++                         hit.byte_start, hit.byte_end, textw);
+         o += kReset;
+         o += "\r\n";
+     }
+ 
+-    o += std::format("{}↑↓ select  Enter jump  Esc cancel  C-w word  C-u clear{}", kDim, kReset);
++    // "left-Alt" is not pedantry: ~/.config/keyd/default.conf gives rightalt to
++    // the fcitx5 IME toggle at the kernel level, so it never reaches tmux here.
++    constexpr std::string_view kFooter =
++        "↑↓ select  left-Alt-digit goto  Enter jump  Esc cancel  C-w word  C-u clear";
++
++    // Width guard, and the reason it is a guard rather than a shorter string:
++    // draw() emits exactly h lines (header + list_rows + footer), so a footer
++    // one cell too wide wraps, the pane scrolls, and the HEADER leaves the
++    // screen — taking the `goto>` prompt with it, which is ADR-0007's only
++    // on-screen evidence that ordinal mode is live. Any future key added below
++    // would bring that back; cutting to the measured width cannot.
++    //
++    // Cut in cells, not bytes (utf8_fit, the same decoder utf8_cells uses):
++    // the footer opens with `↑↓`. kDim/kReset are zero-width, so they are not
++    // charged against the budget and stay wrapped around whatever survives.
++    o += std::format("{}{}{}", kDim, kFooter.substr(0, utf8_fit(kFooter, w)), kReset);
+ 
+     // Park the real cursor at the end of the pattern so typing looks normal.
+     o += std::format("\x1b[1;{}H\x1b[?25h", plen + 1);
+@@ -809,6 +927,9 @@ int run_ui(const std::string& pane) {
+ 
+         switch (in.key) {
+             case Key::Esc:
++                // Esc leaves the MODE, not sift. Outside the mode it cancels
++                // sift exactly as it always has.
++                if (in_ordinal_mode(u)) { u.goto_buf.clear(); break; }
+                 return 0;                                  // cancel: pane untouched
+                                                            // (~RawMode restores)
+ 
+@@ -822,20 +943,36 @@ int run_ui(const std::string& pane) {
+                 return 0;
+             }
+ 
+-            case Key::Up:   if (u.sel > 0) --u.sel; break;
+-            case Key::Down: if (u.sel + 1 < u.hits.size()) ++u.sel; break;
+-            case Key::Home: u.sel = 0; break;
+-            case Key::End:  if (!u.hits.empty()) u.sel = u.hits.size() - 1; break;
++            case Key::Up:   if (u.sel > 0) --u.sel;                        sync_ordinal(u); break;
++            case Key::Down: if (u.sel + 1 < u.hits.size()) ++u.sel;         sync_ordinal(u); break;
++            case Key::Home: u.sel = 0;                                      sync_ordinal(u); break;
++            case Key::End:  if (!u.hits.empty()) u.sel = u.hits.size() - 1; sync_ordinal(u); break;
+ 
+             case Key::PgUp: case Key::PgDn: {
+                 const auto   sz   = term_size();
+                 const size_t step = static_cast<size_t>(sz.h > 4 ? sz.h - 3 : 1);
+                 if (in.key == Key::PgUp) u.sel = (u.sel > step) ? u.sel - step : 0;
+                 else if (!u.hits.empty()) u.sel = std::min(u.sel + step, u.hits.size() - 1);
++                sync_ordinal(u);
+                 break;
+             }
+ 
++            case Key::AltDigit:
++                // Entry — and the keystroke is itself the first digit. Pressed
++                // again inside the mode it is simply another digit.
++                if (!in.text.empty()) push_ordinal_digit(u, in.text[0]);
++                break;
++
+             case Key::Backspace: {
++                // In ordinal mode Backspace pops one digit, and popping the LAST
++                // one leaves the mode. So leaving the mode and deleting a
++                // pattern character are never the same keystroke: the second
++                // Backspace is the one that starts eating the pattern.
++                if (in_ordinal_mode(u)) {
++                    u.goto_buf.pop_back();
++                    if (in_ordinal_mode(u)) u.sel = ordinal_of(u.goto_buf) - 1;
++                    break;
++                }
+                 if (u.pattern.empty()) break;
+                 size_t i = u.pattern.size();
+                 while (i > 0 && (static_cast<unsigned char>(u.pattern[i - 1]) & 0xC0) == 0x80) --i;
+@@ -846,6 +983,7 @@ int run_ui(const std::string& pane) {
+             }
+ 
+             case Key::KillWord: {
++                u.goto_buf.clear();          // the pattern is about to change
+                 size_t i = u.pattern.size();
+                 while (i > 0 && u.pattern[i - 1] == ' ') --i;
+                 while (i > 0 && u.pattern[i - 1] != ' ') --i;
+@@ -855,11 +993,21 @@ int run_ui(const std::string& pane) {
+             }
+ 
+             case Key::KillLine:
++                u.goto_buf.clear();          // the pattern is about to change
+                 u.pattern.clear();
+                 refilter(u);
+                 break;
+ 
+             case Key::Text:
++                if (in_ordinal_mode(u)) {
++                    // A bare digit extends the buffer; anything else leaves the
++                    // mode and is NOT swallowed — it lands in the pattern below.
++                    if (in.text.size() == 1 && in.text[0] >= '0' && in.text[0] <= '9') {
++                        push_ordinal_digit(u, in.text[0]);
++                        break;
++                    }
++                    u.goto_buf.clear();
++                }
+                 u.pattern += in.text;
+                 refilter(u);
+                 break;

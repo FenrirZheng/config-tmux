@@ -1,0 +1,2 @@
+- [2026-09-01 15:40] sweep.sh <- /tmp/claude-1000/-home-fenrir--tmux/4fe3a1de-bb6d-4dc2-b6cc-78a34030775a/scratchpad/sweep.sh (session 4fe3a1de-bb6d-4dc2-b6cc-78a34030775a)
+- [2026-09-01 15:43] feature.sh <- /tmp/claude-1000/-home-fenrir--tmux/4fe3a1de-bb6d-4dc2-b6cc-78a34030775a/scratchpad/feature.sh (session 4fe3a1de-bb6d-4dc2-b6cc-78a34030775a)

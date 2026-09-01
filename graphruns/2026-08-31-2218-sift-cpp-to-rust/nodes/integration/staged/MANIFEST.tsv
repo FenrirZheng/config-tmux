@@ -1,0 +1,12 @@
+modify	/home/fenrir/.tmux/claude.conf	%home%fenrir%.tmux%claude.conf	single cargo build, main.rs reference, cargo-only stub message (C++/cmake -> Rust port)
+modify	/home/fenrir/.tmux/runbooks/sift.md	%home%fenrir%.tmux%runbooks%sift.md	single cargo build, verify-sift-live.sh count corrected to 6, Home/End and resize bugfixes documented, \w/\s/backreferences glibc correction
+modify	/home/fenrir/.tmux/docs/adr/0005-own-the-interaction-loop-for-regex-search.org	%home%fenrir%.tmux%docs%adr%0005-own-the-interaction-loop-for-regex-search.org	add Links pointer to new ADR-0006, repoint main.cpp source link to main.rs
+create	/home/fenrir/.tmux/docs/adr/0006-port-sift-from-cpp-to-rust.org	%home%fenrir%.tmux%docs%adr%0006-port-sift-from-cpp-to-rust.org	new ADR recording the C++/cmake -> Rust/libc-FFI port decision
+modify	/home/fenrir/.tmux/tools/ARCHITECTURE.org	%home%fenrir%.tmux%tools%ARCHITECTURE.org	Crates section: sift is now a normal Rust workspace member, single build command, ADR-0006 link
+modify	/home/fenrir/.tmux/tools/atlas/index.org	%home%fenrir%.tmux%tools%atlas%index.org	remove "plus the one non-Rust tool" language now that sift is Rust
+modify	/home/fenrir/.tmux/tools/atlas/sift.org	%home%fenrir%.tmux%tools%atlas%sift.org	rewrite for Rust/libc-FFI implementation, recompute :lines: citations against main.rs (1573 lines), update SOURCES hashes to main.rs+Cargo.toml
+modify	/home/fenrir/.tmux/CLAUDE.md	%home%fenrir%.tmux%CLAUDE.md	"twelve Rust crates" (was "eleven ... plus sift, which is C++")
+modify	/home/fenrir/.tmux/tools/sift/src/main.rs	%home%fenrir%.tmux%tools%sift%src%main.rs	comment-only: header no longer claims "bug-for-bug port"; names the two verified fixes (Home/End, resize)
+delete	/home/fenrir/.tmux/tools/sift/src/main.cpp	-	superseded by main.rs; kept in git history
+delete	/home/fenrir/.tmux/tools/sift/CMakeLists.txt	-	no longer needed; sift builds via cargo like every other crate
+modify	/home/fenrir/CLAUDE.md	%home%fenrir%CLAUDE.md	honestly record reversal of the 2026-08-27 "sift is C++/cmake" directive (user-approved 2026-08-31); fresh-clone bootstrap drops to one build command and two dependencies

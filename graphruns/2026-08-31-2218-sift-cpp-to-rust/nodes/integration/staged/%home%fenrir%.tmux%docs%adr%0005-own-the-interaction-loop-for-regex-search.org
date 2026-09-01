@@ -1,0 +1,138 @@
+#+TITLE: ADR-0005: Own the interaction loop for regex search, not for plain search
+#+STATUS: accepted
+#+DATE: 2026-08-27
+#+DECIDERS: @fenrir
+
+* Context and Problem Statement
+
+[[file:0001-build-seek-on-tmux-builtin-incremental-search.org][ADR-0001]] decided that ~prefix Space~ would drive tmux's built-in incremental
+search rather than ship its own interaction code, and rejected both a keyboard
+loop that owns every keystroke (Option 2) and a self-drawn overlay (Option 3).
+The deciding driver was that tmux already gives incremental filtering and
+live highlighting across the whole =history-limit 100000= scrollback for free.
+
+~prefix /~ is the *regex* sibling, bound 2026-08-22. It cannot inherit that
+bargain. Measured on tmux 3.5a: the =search-*-incremental= commands are
+plain-text only (=a.c= does not match =abc=), and the regex-capable
+=search-backward= has no incremental variant. So the 2026-08-22 binding types
+the pattern blind into a =command-prompt= and only learns on Enter whether it
+matched anything at all — no match count, no preview, no syntax feedback.
+
+The question is whether ~prefix /~ should keep paying that cost to stay inside
+ADR-0001's rule, or own its interaction loop.
+
+* Decision Drivers
+
+- The status line cannot be made to show a result list: it is one row, the width
+  of the client, and =message-line= / =status-position= are the only knobs. A
+  richer display requires a popup, which requires an external program.
+- A regex is far more likely than a literal to be *wrong* while being typed;
+  feedback before committing is worth more here than for plain text.
+- Whatever is built must not break the chain that already works: match
+  highlighting, ~n~ / ~N~, and seek's ~w~ / ~W~ / ~l~ / ~L~ grab keys all depend
+  on *tmux* holding the search, not on us.
+- Single maintainer. Interaction code written here is debugged here forever —
+  the driver that decided ADR-0001 and has not gone away.
+
+* Considered Options
+
+- Option 1: Keep the =command-prompt=, accept blind typing
+- Option 2: Popup + external program that owns the keystrokes and lists matches
+- Option 3: Re-run =search-backward= per keystroke from an =-i= prompt
+
+* Decision Outcome
+
+Chosen option: "*Option 2*", implemented as [[file:../tools/sift/src/main.rs][=sift=]] (originally C++, ported to Rust 2026-08-31 — [[file:0006-port-sift-from-cpp-to-rust.org][ADR-0006]]).
+
+This narrows ADR-0001 rather than reversing it. ADR-0001's chosen option won
+because tmux supplied the two hardest drivers at zero cost; for regex tmux
+supplies neither, so the same reasoning points the other way. ~prefix Space~ is
+untouched and still drives tmux's own incremental search.
+
+The chain is preserved by *not* owning the final jump. =sift= chooses the
+occurrence; tmux performs the search. On Enter, =sift= seats the copy-mode
+cursor just past the chosen match and issues =search-backward= with the same
+pattern, so tmux itself ends up holding the search — highlighting, ~n~ / ~N~ and
+the grab keys behave exactly as they did before.
+
+Option 3 was measured and rejected in the 2026-08-22 plan: a half-typed regex is
+usually an invalid pattern, and re-running a non-incremental search per keystroke
+compounds cursor jumps.
+
+** Consequences
+
+- Good, because the pattern is now validated, counted and previewed before it is
+  committed, which is the whole complaint against the previous binding.
+- Good, because occurrence-level targeting became possible: the previous binding
+  could only land on "the nearest match above", where =sift= jumps to the one
+  picked out of a list.
+- Good, because =sift rows= gives the feature a headless seam to assert against,
+  the way =cc-fleet rows= does.
+- Bad, because there is now interaction code to maintain here — exactly the cost
+  ADR-0001 declined to take on. It is bounded to one file and one key.
+- Bad, because the toolset is no longer a single =cargo build=. =sift= is C++
+  (user directive) and needs cmake; the fresh-machine bootstrap grows a step.
+- Bad, because =sift= duplicates the two =tmuxlib= facilities it needs (the
+  =tmux= subprocess call and the literal-message helper) instead of sharing them.
+- Neutral, because the match set is kept identical to tmux's by using POSIX
+  =regcomp(REG_EXTENDED)= rather than =std::regex=. A differential test asserts
+  the two agree; if they ever diverge, the list would offer hits the jump cannot
+  reproduce.
+
+* Pros and Cons of the Options
+
+** Option 1: Keep the =command-prompt=
+- Good, because it is three lines of config and no binary.
+- Good, because it cannot drift from tmux's search semantics.
+- Bad, because the entire complaint — no feedback while typing a regex — stands.
+
+** Option 2: Popup + external program
+- Good, because it is the only shape that can filter as you type for regex.
+- Good, because tmux still performs the search, so nothing downstream changes.
+- Bad, because it adds an interaction loop and a second build system.
+
+** Option 3: =-i= prompt re-running =search-backward= per keystroke
+- Good, because it needs no binary.
+- Bad, because a half-typed regex is usually invalid, so most keystrokes produce
+  an error rather than a result.
+- Bad, because every keystroke that *does* parse moves the cursor, so the pane
+  jumps around while typing. Measured and rejected 2026-08-22.
+
+* Notes — tmux behaviours this had to work around
+
+All measured on tmux 3.5a; probe scripts in
+[[file:../records/2026-08-27-2240-tmux-sift/assets/scripts/][records/2026-08-27-2240-tmux-sift/assets/scripts/]].
+
+1. =goto-line N= does not go to line N. It sets =oy=, the scroll offset from the
+   bottom of the history, and leaves the cursor row =cy= alone: the absolute line
+   is =history_size - oy + cy=. Pinning the row with =history-top= first is what
+   makes it an exact seek.
+2. =oy= is not stable while a pane keeps printing; the index from the top of
+   history is. =history_size= is therefore re-read at jump time.
+3. =search-forward= leaves the cursor one cell *past* the end of the match;
+   =search-backward= leaves it on the match *start*. seek's grab keys read the
+   token under the cursor, so the backward one is the only usable option — hence
+   seating the cursor past the target occurrence and searching back onto it.
+4. Both searches *wrap silently* when they fail, so a bad landing does not report
+   itself. =sift= verifies where it landed and says so when it differs.
+5. =display-popup= does *not* format-expand its =shell-command=, and neither does
+   its =-e VAR=value=. A binding written as =display-popup -E "sift '#{pane_id}'"=
+   hands the program those seven literal characters, and =sift= — unable to
+   resolve them — exits, so the popup flashes and shuts. =run-shell= *does*
+   expand, which is what makes the asymmetry easy to miss. Worse,
+   =$TMUX_PANE= inside a popup names the *popup's own* pseudo-pane, so reaching
+   for it searches the wrong pane instead of failing loudly. The only reliable
+   route is =tmux display-message -p '#{pane_id}'= from inside the popup, which
+   returns the client's active pane — the one the key was pressed in. Fixed
+   2026-08-28 in =origin_pane()=; the binding now passes no argument at all.
+6. =#{copy_cursor_line}= truncates at the first wide character — a line reading
+   =中文測試 aa999 尾巴= comes back as =中=. Verification is therefore positional
+   (=history_size - scroll_position + copy_cursor_y=), never textual.
+
+* Links
+
+- Refined by: [[file:0006-port-sift-from-cpp-to-rust.org][ADR-0006]] — a later, separate decision about which language and
+  build system implement the interaction loop chosen here (C++/cmake, then
+  Rust). This ADR's architectural bargain — =sift= owns the keystrokes and the
+  candidate list, tmux owns the actual search and the jump — is unchanged by
+  that decision.
