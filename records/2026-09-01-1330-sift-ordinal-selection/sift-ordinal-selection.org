@@ -13,7 +13,7 @@ verification suites, and documented where the other =sift= behaviour is document
 * Notes
 
 - Working repo: =/home/fenrir/.tmux= @ =main= (single worktree; remote
-  FenrirZheng/config-tmux). Code under =tools/sift/src/main.rs=.
+  FenrirZheng/config-tmux). Code under =tools/sift/src/main.cpp=.
 - *This map carries execution, not just specification* — the design is already
   settled, so the tickets below do work rather than decide. Same shape as the sibling
   [[file:../2026-08-27-2240-tmux-sift/tmux-sift.org][tmux-sift]] map, and a deliberate override of wayfinder's plan-don't-do default.

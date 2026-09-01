@@ -129,7 +129,8 @@ the buffer.
 
 - Refines [[file:0005-own-the-interaction-loop-for-regex-search.org][ADR-0005]] — =sift= owning its keystroke loop is what makes a mode possible
   at all; the hand-back of the jump to tmux is unchanged by this ADR.
-- Related to [[file:0006-port-sift-from-cpp-to-rust.org][ADR-0006]] — the Rust port is the codebase this lands in.
+- Lands in the C++20/cmake =sift= program (=tools/sift/src/main.cpp=) — the 2026-08-31
+  Rust port was reverted on 2026-09-01, so ADR-0006 no longer exists.
 - Vocabulary: =Match ordinal= (候選序號) and =Ordinal mode= (選號模式) in
   [[file:../../CONTEXT.org][CONTEXT.org]].
 - Grill record: [[file:../../records/2026-09-01-1330-sift-ordinal-selection/grill/2026-09-01-1330-sift-ordinal-selection.org][2026-09-01 shared understanding]].

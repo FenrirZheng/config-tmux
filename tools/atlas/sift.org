@@ -5,117 +5,82 @@
 
 * Summary
 
-=sift= is the popup regex search bound to =prefix /=: a Rust crate in the =tools/= cargo workspace like every other tool here, since a 2026-08-31 port from C++/cmake (ADR-0006). It exists because tmux's incremental search is plain-text only, so the previous binding made you type a regex blind into a =command-prompt= and learn only on Enter whether it matched; =sift= owns the keystroke loop instead and lists every occurrence in the scrollback as you type. That is a deliberate narrowing of ADR-0001's "don't own the interaction loop" rule to plain search only — see ADR-0005.
+=sift= is the popup regex search bound to =prefix /=, and the one thing in =tools/= that is not Rust: it is C++ built by cmake, which writes its binary into =target/release/= beside the cargo output so =claude.conf= keeps one path shape for every tool. It exists because tmux's incremental search is plain-text only, so the previous binding made you type a regex blind into a =command-prompt= and learn only on Enter whether it matched; =sift= owns the keystroke loop instead and lists every occurrence in the scrollback as you type. That is a deliberate narrowing of ADR-0001's "don't own the interaction loop" rule to plain search only — see ADR-0005.
 
 What it pointedly does *not* own is the jump. On Enter it seats the copy-mode cursor just past the chosen occurrence and then issues tmux's own =search-backward= with the same pattern, so *tmux* ends up holding the search and match highlighting, =n= / =N=, and seek's =w= / =W= / =l= / =L= grab keys all keep working unchanged. Almost every tmux command in that sequence misbehaves relative to its name — =goto-line= sets a scroll offset rather than a line number, and both searches wrap silently when they miss — so the jump ends by re-reading the cursor's coordinates and asserting where it landed rather than trusting the commands. The measured surprises are recorded in the source comments and in ADR-0005's Notes.
 
 A popup cannot be *told* which pane it belongs to, which is why =sift= takes no pane argument from its binding. =display-popup= does not format-expand its shell-command (nor its =-e=), so a binding passing =#{pane_id}= hands over those literal characters; and =$TMUX_PANE= inside a popup names the popup's own pseudo-pane, so it would search the wrong thing instead of failing. =origin_pane()= asks tmux for the client's active pane instead — the one the key was pressed in. Getting this wrong is invisible in a pane-based test: it shows up only as a popup that flashes and shuts.
 
-There is no =tmuxlib= on this side. The only pieces re-implemented are the =std::process::Command=-based tmux spawn (an argv vector, never a shell string) and the literal =-l= message helper — which together are how =sift= discharges the same format-context proof obligation =seek= does: it stamps no pane options and renders pane text only into its own popup, so there is no format context to escape from and nothing has to be filtered. Its regex engine is glibc =regcomp=/=regexec= (=REG_EXTENDED=) reached through raw =libc= FFI rather than the =regex= crate — ADR-0006's reasoning is dialect fidelity: tmux performs the actual jump via its own POSIX-ERE =search-backward=, so sift's candidate list has to come from the identical engine, matching leftmost-longest semantics, backreferences and =\<=/=\>=, and reading =\d= as a literal =d=, or the two can disagree after a jump. =sift rows <pane> <regex>= is the headless seam, mirroring =cc-fleet rows=; the behaviour above is pinned by =records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh= (13 assertions, including the jump arithmetic over CJK — measured unchanged across the Rust port) and =verify-sift-live.sh= (6 assertions over real keystrokes, the last driving the shipped binding itself) — those are what redden if the sequence shifts.
+The C++ is C++20 and dependency-free, and holds itself to a shape worth knowing before opening the file: every OS resource — the tmux pipe, the compiled regex, the terminal's raw mode — is owned by an RAII type (=Fd=, =Regex=, =RawMode=), so no exit path releases anything by hand and there is no =atexit=; fallible lookups return =std::optional= rather than taking a =bool* ok=; reader parameters are =std::string_view=; and the UTF-8 decoder is =constexpr= and carries its own unit tests as =static_assert=, so the byte/character/cell confusion this tool exists to avoid fails the *build* rather than the pane. The tmux command list is assembled by a concept-constrained variadic =chain()= that owns the =;= separator. =CMakeLists.txt= holds the source to =-Wconversion -Wsign-conversion -Wold-style-cast -Wshadow= on top of =-Wall -Wextra -Wpedantic=, and the =asan= preset builds an ASan+UBSan twin named =sift-asan= — a different name on purpose, because it shares =target/release/= with the binary =prefix /= runs. Both builds go through =CMakePresets.json= (=cmake --preset release= / =--preset asan=), which pins the Ninja generator and the build directory. Ninja is chosen for the no-op rebuild (16 ms against make's 56 ms), not for compile speed: one translation unit gives a build scheduler nothing to parallelise, and a full build measures the same either way.
+
+There is no =tmuxlib= on this side. The only pieces re-implemented in C++ are the =execvp=-based tmux spawn (an argv vector, never a shell string) and the literal =-l= message helper — which together are how =sift= discharges the same format-context proof obligation =seek= does: it stamps no pane options and renders pane text only into its own popup, so there is no format context to escape from and nothing has to be filtered. =sift rows <pane> <regex>= is the headless seam, mirroring =cc-fleet rows=; the behaviour above is pinned by =records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh= (13 assertions, including the jump arithmetic over CJK) and =verify-sift-live.sh= (6 assertions over real keystrokes, the last driving the shipped binding itself) — those are what redden if the sequence shifts.
 
 * Crux
 
 =goto-line= is a scroll offset from the bottom of the history, not a line number, so the cursor row has to be pinned with =history-top= first; only then is =history_size - line= an exact seek. =history_size= is re-read here rather than reused from the capture, because it moves while the pane keeps printing:
 
-#+begin_src rust :file sift/src/main.rs :lines 611-639
-    let p = || OsString::from_vec(pane.to_vec());
-    let mut a: Vec<OsString> = vec![
-        OsString::from("copy-mode"),
-        OsString::from("-t"),
-        p(),
-        OsString::from(";"),
-        OsString::from("send-keys"),
-        OsString::from("-X"),
-        OsString::from("-t"),
-        p(),
-        OsString::from("history-top"),
-    ];
+#+begin_src cpp :file sift/src/main.cpp :lines 449-459
+    std::vector<std::string> cmds;
+    chain(cmds, "copy-mode", "-t", pane);
+    chain(cmds, "send-keys", "-X", "-t", pane, "history-top");
 
-    let mut send = |args: &[OsString]| a.extend(args.iter().cloned());
-
-    if line <= now.history_size {
-        send(&[
-            OsString::from(";"),
-            OsString::from("send-keys"),
-            OsString::from("-X"),
-            OsString::from("-t"),
-            p(),
-            OsString::from("goto-line"),
-            OsString::from((now.history_size - line).to_string()),
-        ]);
+    if (line <= now->history_size) {
+        chain(cmds, "send-keys", "-X", "-t", pane,
+              "goto-line", std::to_string(now->history_size - line));
     } else {
         // Target is in the visible screen: pin the viewport to the bottom and
         // step down to the row.
-        let down = line - now.history_size;
+        const long down = line - now->history_size;
 #+end_src
 
 The chain-preserving step: the pattern is handed to tmux, which is what makes the highlight, =n= / =N= and seek's grab keys work afterwards. The whole sequence goes out as one command list while the popup is still up:
 
-#+begin_src rust :file sift/src/main.rs :lines 663-693
-    // `cursor-right` counts CHARACTERS, which is why char_end — not byte_end,
-    // not cell_end — is the argument.
-    if char_end.0 > 0 {
-        send(&[
-            OsString::from(";"),
-            OsString::from("send-keys"),
-            OsString::from("-X"),
-            OsString::from("-N"),
-            OsString::from(char_end.0.to_string()),
-            OsString::from("-t"),
-            p(),
-            OsString::from("cursor-right"),
-        ]);
-    }
+#+begin_src cpp :file sift/src/main.cpp :lines 465-473
+    if (char_end > 0)
+        chain(cmds, "send-keys", "-X", "-N", std::to_string(char_end), "-t", pane, "cursor-right");
 
     // Registering the pattern with tmux is the point of this step, not just the
     // positioning: it is what makes the match highlight, `n`/`N`, and seek's
     // grab keys work afterwards.
-    send(&[
-        OsString::from(";"),
-        OsString::from("send-keys"),
-        OsString::from("-X"),
-        OsString::from("-t"),
-        p(),
-        OsString::from("search-backward"),
-        OsString::from_vec(pattern.to_vec()),
-    ]);
+    chain(cmds, "send-keys", "-X", "-t", pane, "search-backward", pattern);
 
-    if !tmux_run(&a) {
-        return false;
-    }
+    if (!tmux_run(cmds)) return false;
 #+end_src
 
 Verification is positional, never textual — =#{copy_cursor_line}= truncates at the first wide character, so comparing text would false-alarm on every CJK line. All five fields come from one =display-message= call so they describe one instant:
 
-#+begin_src rust :file sift/src/main.rs :lines 707-723
-    let (s, ok) = tmux_out(&[
-        OsStr::new("display-message"),
-        OsStr::new("-p"),
-        OsStr::new("-t"),
-        os(pane),
-        OsStr::new(
-            "#{history_size}\t#{scroll_position}\t#{copy_cursor_y}\t#{copy_cursor_x}\t#{search_present}",
-        ),
-    ]);
-    if !ok {
-        return false;
+#+begin_src cpp :file sift/src/main.cpp :lines 492-494
+    const auto f      = parse_fields<5>(*s);
+    const long landed = f[0] - f[1] + f[2];
+    return f[4] == 1 && landed == line && f[3] == cell_start;
+#+end_src
+
+The tab-splitting that used to be inlined here — and again, differently, in =pane_geom()= — is now one =parse_fields<N>= reading with =std::from_chars=. Same three-line landing test, one parser:
+
+#+begin_src cpp :file sift/src/main.cpp :lines 220-231
+template <size_t N>
+std::array<long, N> parse_fields(std::string_view s) {
+    std::array<long, N> out{};
+    for (size_t i = 0; i < N; ++i) {
+        const size_t     tab   = s.find('\t');
+        std::string_view field = s.substr(0, tab);
+        std::from_chars(field.data(), field.data() + field.size(), out[i]);
+        if (tab == std::string_view::npos) break;
+        s.remove_prefix(tab + 1);
     }
-    let f = tab_fields::<5>(&s);
-    let landed = f[0] - f[1] + f[2];
-    // Note the asymmetry: the row is checked in LINE units, the column in CELL
-    // units, even though the cursor was moved with a CHARACTER count.
-    f[4] == 1 && landed == line && f[3] == cell_start.0 as i64
+    return out;
+}
 #+end_src
 
 * Links
 
-- implements :: [[file:tmuxlib-lib.org][tmuxlib's single source file]] — honours the contract it cannot link against: the argv-vector tmux spawn and =message_literal='s =-l= discipline, re-implemented independently
-- decided by :: [[file:../../docs/adr/0006-port-sift-from-cpp-to-rust.org][ADR-0006]] — the language/build-system decision (C++/cmake → Rust/libc FFI) this node's source now reflects; ADR-0005 (linked above) is the unchanged architectural decision this node implements
+- implements :: [[file:tmuxlib-lib.org][tmuxlib's single source file]] — honours the contract it cannot link against: the argv-vector tmux spawn and =message_literal='s =-l= discipline, re-implemented in C++
 
 * Sources
 :SOURCES:
-:sift/src/main.rs: sha256:4e9ee7a638f8f00b6a456a35568972284c2738ae55b7cfb48d3fc3db46fb6854
-:sift/Cargo.toml: sha256:e9d96e6a96b4b21b00988ec816e4120dda0734bed8f1b6c749f58b7e5bfa69ad
+:sift/src/main.cpp: sha256:5677321aa1bd9a5746e59c9c2112c68e43d3850fa43f8d8c0c3d6c54d2895663
+:sift/CMakeLists.txt: sha256:23d7c42484e7ba32b11e5c926d17faf8995bfd55ac14d115ad1c0872d4d9c41c
+:sift/CMakePresets.json: sha256:a02d8e56b730a2a8179efbf0846261942716f54e7af8845f54b6f6802f87bad5
 :END:
 
 * Notes
