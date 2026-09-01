@@ -161,3 +161,33 @@ behaviour this change must not move.
 Per the map's Notes, the atlas node =tools/atlas/sift.org= is updated in this same
 change — including its =:lines= source excerpts, which the Rust revert already made
 stale.
+
+** TODO Assert ordinal mode in the verification suites :task:
+:PROPERTIES:
+:CUSTOM_ID: t3
+:ASSIGNEE:
+:BLOCKED_BY: t2
+:END:
+
+*** Question
+
+Extend =records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh= (and
+=verify-sift-jump.sh= where the assertion is arithmetic rather than keystrokes) so the
+shipped ordinal behaviour is pinned the way the rest of =sift= is.
+
+What must redden if the sequence shifts, from ADR-0007's settled decisions: entry on
+=M-<digit>= with the digit buffered; a second digit extending the buffer; an
+out-of-range digit refused without stranding reachable candidates (=N=12=, =M-1= then
+=2= still reaches #12); =↑↓= rewriting the buffer; =Backspace= popping a digit and the
+last pop leaving the mode; a non-digit printable falling through into the pattern;
+=Enter= jumping to the ordinal's occurrence — asserted on the TARGET pane, as §2
+already does, not on the popup's own rendering.
+
+Keep the control case at the top of =verify-sift-jump.sh= — without it a misaimed
+=$TMUX= silently drives the user's real tmux server. The new assertions are
+synthesised keystrokes; the physical-keypress leg is already settled by
+[[#t1][Confirm Alt-digit survives a real keypress through alacritty]] and does not need
+re-proving per-assertion.
+
+Resolution records the new pass counts for both suites, replacing the 13/0 and 6/0 the
+runbook and the atlas node quote.
