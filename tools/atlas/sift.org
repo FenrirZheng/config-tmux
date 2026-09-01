@@ -11,54 +11,65 @@ What it pointedly does *not* own is the jump. On Enter it seats the copy-mode cu
 
 A popup cannot be *told* which pane it belongs to, which is why =sift= takes no pane argument from its binding. =display-popup= does not format-expand its shell-command (nor its =-e=), so a binding passing =#{pane_id}= hands over those literal characters; and =$TMUX_PANE= inside a popup names the popup's own pseudo-pane, so it would search the wrong thing instead of failing. =origin_pane()= asks tmux for the client's active pane instead — the one the key was pressed in. Getting this wrong is invisible in a pane-based test: it shows up only as a popup that flashes and shuts.
 
+The C++ is C++20 and dependency-free, and holds itself to a shape worth knowing before opening the file: every OS resource — the tmux pipe, the compiled regex, the terminal's raw mode — is owned by an RAII type (=Fd=, =Regex=, =RawMode=), so no exit path releases anything by hand and there is no =atexit=; fallible lookups return =std::optional= rather than taking a =bool* ok=; reader parameters are =std::string_view=; and the UTF-8 decoder is =constexpr= and carries its own unit tests as =static_assert=, so the byte/character/cell confusion this tool exists to avoid fails the *build* rather than the pane. The tmux command list is assembled by a concept-constrained variadic =chain()= that owns the =;= separator. =CMakeLists.txt= holds the source to =-Wconversion -Wsign-conversion -Wold-style-cast -Wshadow= on top of =-Wall -Wextra -Wpedantic=, and the =asan= preset builds an ASan+UBSan twin named =sift-asan= — a different name on purpose, because it shares =target/release/= with the binary =prefix /= runs. Both builds go through =CMakePresets.json= (=cmake --preset release= / =--preset asan=), which pins the Ninja generator and the build directory. Ninja is chosen for the no-op rebuild (16 ms against make's 56 ms), not for compile speed: one translation unit gives a build scheduler nothing to parallelise, and a full build measures the same either way.
+
 There is no =tmuxlib= on this side. The only pieces re-implemented in C++ are the =execvp=-based tmux spawn (an argv vector, never a shell string) and the literal =-l= message helper — which together are how =sift= discharges the same format-context proof obligation =seek= does: it stamps no pane options and renders pane text only into its own popup, so there is no format context to escape from and nothing has to be filtered. =sift rows <pane> <regex>= is the headless seam, mirroring =cc-fleet rows=; the behaviour above is pinned by =records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh= (13 assertions, including the jump arithmetic over CJK) and =verify-sift-live.sh= (6 assertions over real keystrokes, the last driving the shipped binding itself) — those are what redden if the sequence shifts.
 
 * Crux
 
 =goto-line= is a scroll offset from the bottom of the history, not a line number, so the cursor row has to be pinned with =history-top= first; only then is =history_size - line= an exact seek. =history_size= is re-read here rather than reused from the capture, because it moves while the pane keeps printing:
 
-#+begin_src cpp :file sift/src/main.cpp :lines 297-306
-    std::vector<std::string> a = {"copy-mode", "-t", pane,
-                                  ";", "send-keys", "-X", "-t", pane, "history-top"};
+#+begin_src cpp :file sift/src/main.cpp :lines 449-459
+    std::vector<std::string> cmds;
+    chain(cmds, "copy-mode", "-t", pane);
+    chain(cmds, "send-keys", "-X", "-t", pane, "history-top");
 
-    if (line <= now.history_size) {
-        a.insert(a.end(), {";", "send-keys", "-X", "-t", pane,
-                           "goto-line", std::to_string(now.history_size - line)});
+    if (line <= now->history_size) {
+        chain(cmds, "send-keys", "-X", "-t", pane,
+              "goto-line", std::to_string(now->history_size - line));
     } else {
         // Target is in the visible screen: pin the viewport to the bottom and
         // step down to the row.
-        long down = line - now.history_size;
+        const long down = line - now->history_size;
 #+end_src
 
 The chain-preserving step: the pattern is handed to tmux, which is what makes the highlight, =n= / =N= and seek's grab keys work afterwards. The whole sequence goes out as one command list while the popup is still up:
 
-#+begin_src cpp :file sift/src/main.cpp :lines 313-322
+#+begin_src cpp :file sift/src/main.cpp :lines 465-473
     if (char_end > 0)
-        a.insert(a.end(), {";", "send-keys", "-X", "-N", std::to_string(char_end),
-                           "-t", pane, "cursor-right"});
+        chain(cmds, "send-keys", "-X", "-N", std::to_string(char_end), "-t", pane, "cursor-right");
 
     // Registering the pattern with tmux is the point of this step, not just the
     // positioning: it is what makes the match highlight, `n`/`N`, and seek's
     // grab keys work afterwards.
-    a.insert(a.end(), {";", "send-keys", "-X", "-t", pane, "search-backward", pattern});
+    chain(cmds, "send-keys", "-X", "-t", pane, "search-backward", pattern);
 
-    if (!tmux_run(a)) return false;
+    if (!tmux_run(cmds)) return false;
 #+end_src
 
 Verification is positional, never textual — =#{copy_cursor_line}= truncates at the first wide character, so comparing text would false-alarm on every CJK line. All five fields come from one =display-message= call so they describe one instant:
 
-#+begin_src cpp :file sift/src/main.cpp :lines 342-352
-    long f[5] = {0, 0, 0, 0, 0};
-    size_t start = 0;
-    for (int i = 0; i < 5; ++i) {
-        size_t tab = s.find('\t', start);
-        f[i] = strtol(s.substr(start, tab == std::string::npos ? std::string::npos
-                                                              : tab - start).c_str(), nullptr, 10);
-        if (tab == std::string::npos) break;
-        start = tab + 1;
-    }
-    long landed = f[0] - f[1] + f[2];
+#+begin_src cpp :file sift/src/main.cpp :lines 492-494
+    const auto f      = parse_fields<5>(*s);
+    const long landed = f[0] - f[1] + f[2];
     return f[4] == 1 && landed == line && f[3] == cell_start;
+#+end_src
+
+The tab-splitting that used to be inlined here — and again, differently, in =pane_geom()= — is now one =parse_fields<N>= reading with =std::from_chars=. Same three-line landing test, one parser:
+
+#+begin_src cpp :file sift/src/main.cpp :lines 220-231
+template <size_t N>
+std::array<long, N> parse_fields(std::string_view s) {
+    std::array<long, N> out{};
+    for (size_t i = 0; i < N; ++i) {
+        const size_t     tab   = s.find('\t');
+        std::string_view field = s.substr(0, tab);
+        std::from_chars(field.data(), field.data() + field.size(), out[i]);
+        if (tab == std::string_view::npos) break;
+        s.remove_prefix(tab + 1);
+    }
+    return out;
+}
 #+end_src
 
 * Links
@@ -67,8 +78,9 @@ Verification is positional, never textual — =#{copy_cursor_line}= truncates at
 
 * Sources
 :SOURCES:
-:sift/src/main.cpp: sha256:7c275d7892b95efb9825f42d373e27e43cb2a916f86ea199a813687ffc3ee3bf
-:sift/CMakeLists.txt: sha256:5c493db5a172ceb3bdf80555bfb7b1ac62acaa90699006afb9901252454dbeba
+:sift/src/main.cpp: sha256:5677321aa1bd9a5746e59c9c2112c68e43d3850fa43f8d8c0c3d6c54d2895663
+:sift/CMakeLists.txt: sha256:23d7c42484e7ba32b11e5c926d17faf8995bfd55ac14d115ad1c0872d4d9c41c
+:sift/CMakePresets.json: sha256:a02d8e56b730a2a8179efbf0846261942716f54e7af8845f54b6f6802f87bad5
 :END:
 
 * Notes

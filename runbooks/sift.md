@@ -43,14 +43,36 @@ scrollback to search, and the header says `⚠ visible screen only`.
 `sift` is C++ and does **not** build with `cargo`. From a fresh clone:
 
 ```bash
-cd ~/.tmux/tools
-cmake -S sift -B target/cmake-build -DCMAKE_BUILD_TYPE=Release
-cmake --build target/cmake-build -j
+cd ~/.tmux/tools/sift
+cmake --preset release && cmake --build --preset release
 tmux source-file ~/.tmux.conf     # required — the binding's guard is load-time
 ```
 
-Needs only a C++20 compiler (g++ ≥ 10). No ncurses, no external libraries —
-raw termios, ANSI, POSIX `<regex.h>` and libc `wcwidth`.
+[`CMakePresets.json`](../tools/sift/CMakePresets.json) pins the generator
+(Ninja) and the build directory, so there is one spelling to remember and the
+`-S`/`-B`/`-DCMAKE_BUILD_TYPE` triple cannot drift between this runbook and
+whatever you typed last time.
+
+Needs a C++20 compiler (g++ ≥ 10), `ninja`, and cmake ≥ 3.21 for presets. No
+ncurses, no external libraries — raw termios, ANSI, POSIX `<regex.h>` and libc
+`wcwidth`. **Ninja is a convenience, not a requirement**: without it, or on an
+older cmake, the generator-less form still builds the same binary —
+
+```bash
+cd ~/.tmux/tools
+cmake -S sift -B target/cmake-build -DCMAKE_BUILD_TYPE=Release
+cmake --build target/cmake-build -j
+```
+
+Do not expect Ninja to speed up the compile. `sift` is a single translation
+unit, so there is nothing for a build scheduler to parallelise; measured on this
+machine, a full build is 2446 ms under Ninja against 2434 ms under make. What
+Ninja actually buys is the **no-op** rebuild — 16 ms against make's 56 ms —
+which is the case that recurs while editing. The 2.4 s is g++ optimising one
+910-line TU, and only 454 ms of that is the standard headers, so precompiled
+headers do not help either (measured: 3014 ms clean, because it also has to
+build the PCH). If that 2.4 s ever becomes the bottleneck, `ccache` is the lever
+that would move it, not the generator.
 
 Two things worth knowing about where the build output goes:
 
@@ -65,13 +87,34 @@ Two things worth knowing about where the build output goes:
 
 ```bash
 bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh   # 13 assertions
-bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh   #  5 assertions
+bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh   #  6 assertions
 ```
 
 Both spin up a throwaway tmux server and clean it up. `verify-sift-jump.sh`
 asserts the jump arithmetic against hand-issued tmux commands;
 `verify-sift-live.sh` drives the real TUI with real keystrokes and asserts on the
 target pane, so it would catch a wrong wiring that the first script cannot.
+
+### Under the sanitizers
+
+Both scripts honour `$SIFT`, so the same 19 assertions can be re-run against an
+ASan + UBSan + LSan build. The sanitizer target is deliberately named
+`sift-asan`: it shares the output directory with the release binary, and an
+instrumented binary silently taking over `prefix /` would be a slow, confusing
+regression rather than a loud one.
+
+```bash
+cd ~/.tmux/tools/sift
+cmake --preset asan && cmake --build --preset asan
+SIFT=~/.tmux/tools/target/release/sift-asan \
+  bash ~/.tmux/records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh
+```
+
+Expect the same `passed 13, failed 0` with no sanitizer output at all. The
+instrumented build is roughly 4x slower, so the live script's scrollback timing
+assertion has that much less headroom (measured 243 ms against its 300 ms
+budget, versus 60 ms uninstrumented) — a failure there under `sift-asan` alone
+is the sanitizer, not a regression.
 
 Both scripts point `$TMUX` at the throwaway socket before invoking `sift`. That
 is not incidental: `sift` finds its server through `$TMUX` like every other tool
