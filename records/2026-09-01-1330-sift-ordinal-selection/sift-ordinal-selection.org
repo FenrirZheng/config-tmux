@@ -124,3 +124,40 @@ implementation hook is exactly the =c1= branch of =read_key()=: today a digit th
 falls into =Key::None=, and that is where ordinal-mode entry attaches.
 
 - review: settled live with user (physical keypress, 2026-09-01), plus probe-verified control on the C++ binary (3/3)
+
+** TODO Build ordinal mode into the C++ sift :task:
+:PROPERTIES:
+:CUSTOM_ID: t2
+:ASSIGNEE:
+:BLOCKED_BY:
+:END:
+
+*** Question
+
+Implement ADR-0007 in =tools/sift/src/main.cpp= — the whole behaviour, in one change:
+
+- The *ordinal column* renders always, left of the line-number column, at the width of
+  the current /N/. It shares =draw()='s width budget with the line-number column and
+  =render_line()='s cell arithmetic, so the horizontal-scroll guarantee (the match is
+  always on screen) must survive the narrower text field.
+- *Entry is left =Alt-<digit>=*, which is also the first digit. The hook is the =c1=
+  branch of =read_key()=: today =0x1b= followed by anything that is not =[= or =O=
+  returns =Key::None=, and a digit lands there — confirmed live on this binary by
+  [[#t1][Confirm Alt-digit survives a real keypress through alacritty]]. =Alt-0=, an
+  empty list and an invalid pattern are ignored.
+- *The buffer and the selection are one object*: further digits extend, an
+  out-of-range digit is not buffered, =↑↓= move the selection and rewrite the buffer,
+  the prompt reads =goto>= instead of =regex>=. =Backspace= pops a digit and popping
+  the last one leaves the mode; a non-digit printable leaves the mode into the pattern.
+- =Enter= jumps and exits, unchanged — ADR-0005's hand-back to tmux's =search-backward=
+  is untouched, and =sift rows= gains nothing.
+
+The build is =cmake --preset release= from =tools/sift=, never =cargo=; the compile
+bar is the warning set already in =CMakeLists.txt= (=-Wconversion=/=-Wsign-conversion=
+matter here — this change adds ordinal↔index↔cell conversions), and it must stay
+clean. Run the existing =verify-sift-{jump,live}.sh= before and after: they pin the
+behaviour this change must not move.
+
+Per the map's Notes, the atlas node =tools/atlas/sift.org= is updated in this same
+change — including its =:lines= source excerpts, which the Rust revert already made
+stale.
