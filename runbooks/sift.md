@@ -31,7 +31,16 @@ first digit; the mode is the fastest way to reach an arbitrary candidate
 without walking the list one row at a time. Right Alt does **not** work for
 this — `~/.config/keyd/default.conf:40` gives `rightalt` to the fcitx5 IME
 toggle at the kernel level, so it never reaches tmux on this machine, and the
-footer names "left Alt" specifically for that reason.
+footer names "left Alt" specifically for that reason. The footer item reads:
+
+```
+left-Alt-<n> goto match n
+```
+
+`match` rather than a bare `goto` because the verb alone named the action without
+its object; `match` is the word already on screen, in the header's `N matches` and
+in the ordinal column itself. Lowercase `n` is one candidate's number — capital *N*
+is the total.
 
 | key (while in ordinal mode) | does |
 |---|---|
@@ -116,7 +125,7 @@ Two things worth knowing about where the build output goes:
 
 ```bash
 bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh   # 13 assertions
-bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh   # 17 assertions
+bash records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-live.sh   # 19 assertions
 ```
 
 Both spin up a throwaway tmux server and clean it up. `verify-sift-jump.sh`
@@ -126,7 +135,7 @@ target pane, so it would catch a wrong wiring that the first script cannot.
 
 ### Under the sanitizers
 
-Both scripts honour `$SIFT`, so the same 30 assertions can be re-run against an
+Both scripts honour `$SIFT`, so the same 32 assertions can be re-run against an
 ASan + UBSan + LSan build. The sanitizer target is deliberately named
 `sift-asan`: it shares the output directory with the release binary, and an
 instrumented binary silently taking over `prefix /` would be a slow, confusing

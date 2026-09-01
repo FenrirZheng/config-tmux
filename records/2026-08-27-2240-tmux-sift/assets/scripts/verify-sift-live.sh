@@ -8,7 +8,7 @@
 # send-keys, and the assertions read the TARGET pane. Also measures the filter
 # cost against a full 100000-line scrollback.
 #
-# Sections 6-8 pin ordinal mode (ADR-0007). Every one of those eleven assertions
+# Sections 6-8 pin ordinal mode (ADR-0007). Every one of those thirteen assertions
 # was watched to FAIL against a pre-ordinal build of tools/sift/src/main.cpp
 # (`git show <pre-ordinal>:tools/sift/src/main.cpp | g++ -std=c++20 -O2 -x c++ -`)
 # while all six older assertions still passed there. Both suites honour $SIFT,
@@ -211,12 +211,15 @@ check "ordinal 5 lands on bb191 (col 13, row191 line) — not the default cc193/
       "13|1|1|row191 aa191 bb191 cc191" "$got"
 t send-keys -X -t "$TARGET" cancel
 
-echo "== 8. the header survives a narrow pane (74x20) =="
+echo "== 8. the header survives a narrow pane, and the footer fits its own budget =="
 # The regression test for 2026-09-01: the footer had grown to 75 cells with no
 # width guard, so at any sift width <= 74 it wrapped, the pane scrolled, and the
 # header — the `goto>` prompt AND the match count — left the screen. Ordinal mode
 # was fully functional and completely invisible, and every assertion above, all
 # written at 100 columns, passed straight through it.
+# (The footer is 81 cells since t5 reworded it; 74 is still below that, so the
+# guard's behaviour at this width is unchanged and the 75 above stays as the
+# figure that was measured on the day.)
 #
 # Asserted as screen LINE 1, not as a grep over the whole screen: a grep passes
 # while the header sits anywhere, and the whole point is that it is on line 1.
@@ -239,6 +242,42 @@ case "$line1" in
          "line 1 begins with 'goto> '" "$line1" ;;
 esac
 t kill-session -t narrow
+
+# ... and the other edge: the footer at EXACTLY its own width. Asserting that the
+# ordinal item merely "survives the cut" would prove nothing — utf8_fit cuts from
+# the RIGHT, that item sits at cells 12-36, and every future addition lands after
+# it, so such an assertion is true at any width >= 36 and can never redden. What
+# growth actually threatens is the tail. Asserting the WHOLE line at exact fit is
+# what has teeth: one added cell anywhere on it reddens this.
+#
+# The -x 81 and the string below are two encodings of one measurement and move
+# together; the string is transcribed from kFooter in tools/sift/src/main.cpp.
+FOOTER='↑↓ select  left-Alt-<n> goto match n  Enter jump  Esc cancel  C-w word  C-u clear'
+t new-session -d -s fitw -x 81 -y 20
+t new-window -d -t fitw -n ordf "TMUX='$SOCK,0,0' '$SIFT' '$TARGET'"
+FP=$(t display-message -p -t fitw:ordf '#{pane_id}')
+sleep 0.8
+geo=$(t display-message -p -t "$FP" '#{pane_width}x#{pane_height}')
+echo "  exact-fit sift pane: $geo"
+# Fail closed: a pane that is not the footer's own width cannot test the budget.
+[ "$geo" = "81x20" ] || { fail=$((fail+1)); printf '  FAIL exact-fit harness geometry\n     want: 81x20\n     got : %s\n' "$geo"; }
+for ((i = 0; i < ${#ORD_RE}; i++)); do t send-keys -t "$FP" -l "${ORD_RE:i:1}"; sleep 0.06; done
+sleep 0.4
+t send-keys -t "$FP" M-1
+sleep 0.6
+scr=$(t capture-pane -p -t "$FP")
+line1=$(printf '%s\n' "$scr" | sed -n 1p)
+case "$line1" in
+  "goto> "*) ok "at 81x20, screen line 1 is still the goto> header" ;;
+  *) bad "at 81x20, screen line 1 is still the goto> header" \
+         "line 1 begins with 'goto> '" "$line1" ;;
+esac
+# Line 20, not `tail -1`: draw()'s h-line contract fixes the footer's row, so a
+# footer that wrapped would put something else there — which is the failure this
+# is aimed at, and `tail -1` would hide it.
+check "at 81x20 the whole footer renders, uncut" "$FOOTER" \
+      "$(printf '%s\n' "$scr" | sed -n 20p | sed 's/ *$//')"
+t kill-session -t fitw
 
 echo "== 9. the REAL binding, driven by a real prefix keypress =="
 # The regression test for 2026-08-28: tests 1-4 launch sift in a window with the

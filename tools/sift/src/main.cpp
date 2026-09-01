@@ -886,8 +886,14 @@ void draw(Ui& u) {
 
     // "left-Alt" is not pedantry: ~/.config/keyd/default.conf gives rightalt to
     // the fcitx5 IME toggle at the kernel level, so it never reaches tmux here.
+    // `goto match n`, not a bare `goto`: the verb alone names the action without
+    // naming its object, which left "goto what?" to inference. `match` is the one
+    // word already anchored on screen — the header counts `N matches`, the cyan
+    // column IS the match ordinal — where a `#n` sigil would have had no referent
+    // on a row, and `#` in this repo reads as tmux format syntax. Lowercase `n`
+    // deliberately: capital N is the TOTAL, so `goto match N` would name the last.
     constexpr std::string_view kFooter =
-        "↑↓ select  left-Alt-digit goto  Enter jump  Esc cancel  C-w word  C-u clear";
+        "↑↓ select  left-Alt-<n> goto match n  Enter jump  Esc cancel  C-w word  C-u clear";
 
     // Width guard, and the reason it is a guard rather than a shorter string:
     // draw() emits exactly h lines (header + list_rows + footer), so a footer

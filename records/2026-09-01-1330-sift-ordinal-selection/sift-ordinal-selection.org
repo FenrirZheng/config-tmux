@@ -65,15 +65,15 @@ verification suites, and documented where the other =sift= behaviour is document
 - [[#t4][Document ordinal mode where the rest of sift is documented]] — runbook updated
   and validated by a use-node reaching ground truth from the doc alone; two real
   documentation gaps recorded, not closed
+- [[#t5][Say in the footer what left-Alt-<n> does]] — the footer item became
+  =left-Alt-<n> goto match n=; the deferred "any indicator beyond =goto>=" question is
+  answered, narrowly, by a reword rather than a new indicator
 
 * Not yet specified
 
 - Whether the ordinal column's width should keep tracking the current /N/ (and so
   jitter as the pattern changes) or be pinned the way =draw()= pins the line-number
   column from the capture size. Only using the feature will say.
-- Whether ordinal mode wants any indicator beyond the =goto>= prompt once it is in
-  daily use — the popup header has room, but inventing one before the feature has been
-  lived with is guessing.
 
 * Out of scope
 
@@ -386,6 +386,10 @@ reader who tries the right-hand key. The =goto>= prompt is the only in-popup
 indicator; *no further indicator was invented*, because the map defers that question
 on purpose (see Not yet specified). That deferral stays untouched.
 
+Superseded as to wording by [[#t5][t5]] (2026-09-01): the footer item now reads
+=left-Alt-<n> goto match n=. The "left Alt" rationale above is unchanged — t5 revised
+the surface, not the reason.
+
 *Validated by use, not by inspection.* A fresh agent was given /only/
 =runbooks/sift.md= — no source, no ADR, no suites — and told to reach the 12th of 12
 matches. It used =M-1= =2= =Enter=, derived from the runbook alone, and landed on
@@ -400,3 +404,87 @@ rather than dropped:
 
 - review: use-node given the runbook alone, landed on independently-computed ground
   truth
+
+** DONE Say in the footer what left-Alt-<n> does :task:
+:PROPERTIES:
+:CUSTOM_ID: t5
+:ASSIGNEE: fenrir@graphrun-1502
+:BLOCKED_BY: t2 t3 t4
+:END:
+
+*** Question
+
+The user, having used ordinal mode, asked that the UI say what =alt + 1= does. The key
+was already named in the footer, so the gap was not that it went undocumented on
+screen: =left-Alt-digit goto= named the *action* without naming its *object*, leaving
+"goto what?" to inference.
+
+This is also the decision condition for the deferred item "whether ordinal mode wants
+any indicator beyond the =goto>= prompt". The map declined to answer it before the
+feature had been lived with; it now has been, so the item is decidable.
+
+*** Resolution
+
+*The change is one string literal* in =tools/sift/src/main.cpp=:
+
+: ↑↓ select  left-Alt-<n> goto match n  Enter jump  Esc cancel  C-w word  C-u clear
+
+*Why =match n= and not =#n=.* =#n= was the first candidate and was rejected on two
+grounds, the first local and decisive: in this repo =#= is tmux format syntax
+(=#{pane_id}=, =#{copy_cursor_x}=), so a =#= that is *not* a format is a collision at
+exactly the place a reader is trying to parse. Second, the rows render bare numbers,
+never =#=-prefixed, so =#n= would have asked the reader to invent the mapping =#= ->
+the cyan column. =match= is the one candidate word with a referent chain already on
+screen: the header's =N matches=, the ordinal column itself, and the glossary term
+[[file:../../CONTEXT.org][Match ordinal]]. Lowercase =n= is deliberate — capital /N/
+is the *total*, so =goto match N= would have named the last candidate.
+
+The angle brackets stay: =left-Alt-n= reads as Alt plus the letter =n=, a real key
+nobody should press.
+
+*The footer went 75 -> 81 cells, and that is an advantage, not a cost.* A shorter form
+(=left-Alt-n goto #n=, 74) was available and was rejected: [[#t3][t3]]'s narrow-width
+assertion runs at 74x20 precisely /because/ 74 is below the footer width, so
+=utf8_fit= must act. A 74-cell footer would fit exactly there, and that assertion
+would then pass on a guarded *and* an unguarded binary — keeping its wording while
+losing its teeth. The same species of defect as the two [[#t3][t3]] caught.
+
+*The suites gain two assertions* (live 17/0 -> *19/0*; jump unchanged 13/0), both in
+§8, which is now "the header survives a narrow pane, and the footer fits its own
+budget". The obvious assertion was rejected as near-vacuous: =utf8_fit= cuts from the
+*right* and the new item sits at cells 12-36, so "the item survives the cut" is true
+at any width >= 36 and could never redden — every future addition lands after it.
+What growth actually threatens is the tail. So the assertion is *the whole footer
+line, at exactly its own width* (81x20, geometry fail-closed), where one added cell
+anywhere reddens it, plus a companion line-1 check that separates "footer wrapped"
+from "footer merely wrong".
+
+*Negative control, per the standing rule.* The assertions were written and run
+*before* the literal changed: 18 pass / 1 fail against the shipped binary, the one
+failure printing the old string. Note the prediction was 17/2 and the outcome 18/1 —
+the line-1 companion passes on the old binary too, because a 75-cell footer does not
+overflow an 81-column pane; it reddens only when the footer *exceeds* the width, which
+is what it is for. All thirteen §6-8 assertions were then re-checked against the
+pre-ordinal build (=goto_buf= count 0): *13 fail, 19 pre-existing pass*.
+
+*One thing measured rather than assumed*: that a line exactly filling the pane width
+does not itself wrap. Evidence existed at 75 but not at 81; confirmed at 81, so the
+canary stayed there rather than moving to 82.
+
+*Docs and atlas.* =runbooks/sift.md= quotes the shipped footer item and its rationale;
+counts 13 / 19 / 32. =tools/atlas/sift.org= took a recomputed =main.cpp= sha256 and the
+new live count — the four =:lines:= anchors all sit above the edit and were re-verified
+unshifted. [[file:../../docs/adr/0007-select-a-sift-match-by-typing-its-ordinal.org][ADR-0007]]
+is *not* touched: accepted, implemented, hence immutable, and it never quoted the
+footer verbatim — it requires only that the footer say "left Alt", which it still does.
+
+*What this does NOT settle.* A static dim line is skipped by the eye regardless of its
+wording, and that was half the original complaint. A header hint and a per-row marker
+were both offered and declined in favour of the minimum. So the deferred question —
+"any indicator beyond the =goto>= prompt" — is closed by a *narrower* answer than it
+asked: the footer now says what the key does, but nothing new draws the eye to it. If
+that proves insufficient in use, the header remains the place with room.
+
+- review: negative control run in both directions (18/1 before the literal changed,
+  19/0 after; 13/19 against the pre-ordinal build), and the exact-fit canary confirmed
+  at the measured width rather than assumed
