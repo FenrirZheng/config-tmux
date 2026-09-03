@@ -2,11 +2,12 @@
 
 Author: fenrir
 Created: 2026-09-03
-Status: draft
+Status: accepted
+Accepted: 2026-09-03
 
 ## Problem
 
-`prefix g` (uncommitted in `tmux.conf` on 2026-09-03) opens a bare `pane name:`
+`prefix g` (commit `af0aa50`, 2026-09-03) opens a bare `pane name:`
 prompt. The user must already know a pane's title to type a fragment of it;
 nothing shows which titles exist. A typo or an unknown title yields the
 filter-ignored full tree (tmux drops a filter that would empty the list), and
@@ -61,6 +62,4 @@ a miss.
 - Ambiguity: when a fragment matches several panes, jump to the first, or fall
   back to a list? "命中" suggests a unique match jumps and a multi-match lists.
 - Match rule: substring, case-insensitive (`#{mi:}`), as today?
-- Ordering: does the uncommitted `prefix g` work get committed first as the
-  baseline this intent replaces, or is it folded into this intent's build?
 - Does a miss (zero matches) show the full list again, or an error message?
