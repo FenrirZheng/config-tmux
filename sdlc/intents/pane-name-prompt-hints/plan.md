@@ -156,7 +156,7 @@ repo's `<area>: <verb> <thing>` style.
    - "The recipe": new first subsection "Option C — fzf popup — SHIPPED" with the
      binding, the script's three entry points, and the exit-code table from the
      spec. Option A keeps its text, retitled "filtered tree (no helper script,
-     no fzz) — fallback", its `SHIPPED` marker removed. Option B stays as the
+     no fzf) — fallback", its `SHIPPED` marker removed. Option B stays as the
      one-command form the script's `jump` now implements; say so in one line.
    - "Verify": add a second table with the observed values from steps 2 and 4,
      dated. Keep the existing table; its measurements still hold for the fallback.
