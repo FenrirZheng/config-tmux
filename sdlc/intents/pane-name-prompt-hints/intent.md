@@ -47,10 +47,17 @@ a miss.
 - Titles are read, never written. `select-pane -T` stays off the table for any
   pane running `claude` (`talk ping`, `cc-attend`, `cc-fleet` key off the title).
 - A jump on no match must fail closed: `switch-client -t ""` exits 0 and does
-  nothing, so an empty resolution must print and exit non-zero, not pass through.
-- Plain tmux where possible. A helper script is acceptable if the inline
-  `command-prompt` cannot both list titles and jump; a new Rust crate in
-  `tools/` is out of scope unless the spec shows tmux alone cannot do it.
+  nothing, so an empty resolution must never reach `switch-client`; it prints a
+  message instead. (Amended 2026-09-03: the original wording also required a
+  non-zero exit; the toolset invariant at `tools/ARCHITECTURE.org:139` is exit 0
+  from anything a key binding runs, and the tool follows that.)
+- Implementation is a C++ binary under `tools/`, built with cmake next to `sift`,
+  owning its own interaction loop with no fzf dependency. User directive,
+  2026-09-03, in this session: "i want to desgin cpp binary file to replace this
+  bin/pane-jump", then "Own TUI, no fzf" at the prompt. This replaces the
+  original constraint (plain tmux where possible, a helper script acceptable, a
+  new crate out of scope unless tmux alone cannot do it). The reason the original
+  allowed a crate at all still holds: tmux has no as-you-type filter over panes.
 - tmux 3.5a is the measured baseline.
 
 ## Open questions
