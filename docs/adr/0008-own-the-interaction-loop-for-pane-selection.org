@@ -1,0 +1,175 @@
+#+TITLE: ADR-0008: Own the interaction loop for selecting a pane by title
+#+STATUS: accepted
+#+DATE: 2026-09-03
+#+DECIDERS: @fenrir
+
+* Context and Problem Statement
+
+~prefix g~ was bound 2026-09-03 to =command-prompt -p "pane name:"= running
+=choose-tree -Z -f '#{mi:*%%*,#{pane_title}}'=, the first thing in this repo
+that selects a *non-Claude* pane by title. It was shipped the same day it was
+found insufficient. The measurements are in
+[[file:../../runbooks/switch-pane-by-name.md][runbooks/switch-pane-by-name.md]],
+taken on tmux 3.5a on 2026-09-03 against a throwaway server with three panes
+titled =alpha-build=, =beta-server=, =gamma-notes=:
+
+- A pane is not a name target at all. =select-pane -t 'beta-server'= prints
+  =can't find pane: beta-server= and exits 1; the =target-pane= token list in
+  =man tmux= is entirely positional. Name typing has to be a filter over a
+  list, never a target.
+- =choose-tree -f= is the only builtin that reaches a pane through a format,
+  and it opens with the cursor on the *session* row whenever the filter
+  excludes the current pane. Enter with no navigation left the active pane
+  unchanged; the pane is reached only after =Down Down= or the row's bracketed
+  shortcut key.
+- =man tmux= on =-f=: "If a filter would lead to an empty list, it is ignored."
+  Measured: a filter matching no title showed all three panes. A typo is
+  therefore reported as the full tree, which reads like success.
+- The filter is committed on Enter, so nothing is on screen while it is typed.
+  No tmux command filters a list as you type; the status line is one row and
+  =message-line= / =status-position= are the only knobs.
+
+This is the gap
+[[file:0005-own-the-interaction-loop-for-regex-search.org][ADR-0005]] recorded
+for regex search, one layer up: there tmux could not *show* a regex while it
+was typed, here tmux cannot *narrow a list* while it is typed. The question is
+the same one: keep the builtin and accept blind typing, or own the interaction
+loop.
+
+* Decision Drivers
+
+- The list must be visible before the first keystroke. The intent's success
+  criterion is =prefix g=, read, type, Enter — reading the roster is half of it,
+  and =command-prompt= shows nothing to read.
+- A miss must be visible as a miss. =choose-tree='s ignored-empty-filter rule
+  turns a typo into the widest possible result, which is the opposite of fail
+  closed.
+- Enter must be the only confirming key. Every extra =Down= is the failure mode
+  the runbook records as the most likely way to conclude the recipe does not
+  work.
+- Pane titles are read, never written (=tools/ARCHITECTURE.org=, Collision 1):
+  =talk ping= and =tmuxlib::title_state= classify Claude panes from
+  =#{pane_title}=. Whatever is built reads titles only.
+- Single maintainer. Interaction code written here is debugged here forever —
+  the driver that decided ADR-0001 and stands unchanged.
+
+* Considered Options
+
+- Option 1: Keep =command-prompt= + =choose-tree -f=, accept blind typing
+- Option 2: Popup + a bash script around =fzf=, the =cc-fleet= shape
+- Option 3: Popup + an own C++ TUI that owns the keystrokes, the =sift= shape
+
+* Decision Outcome
+
+Chosen option: "*Option 3*", implemented as
+[[file:../../tools/pane-jump/src/main.cpp][=pane-jump=]], on the user's directive
+of 2026-09-03 ("Own TUI, no fzf", recorded in the amendment note at the head of
+=sdlc/intents/pane-name-prompt-hints/spec.md=). Option 2 was the shape the
+first draft of the plan carried; the directive superseded it whole.
+
+ADR-0005 is the precedent, not an analogy: it decided that a popup around a
+program that owns the keystroke loop is the answer when tmux cannot filter as
+you type, and it left ~prefix Space~ on tmux's own incremental search because
+tmux does that part well. The same split holds here. =choose-tree= keeps
+=prefix w=, ace-window keeps =prefix o= for positional selection in the current
+window, =cc-fleet= keeps =prefix S= for Claude panes; only the by-title case
+across every session moves to a program.
+
+Unlike =sift=, =pane-jump= does own the final move: it runs
+=switch-client -t <pane_id>=, which =man tmux= documents and the runbook
+measured as changing session, window and pane in one call. There is no tmux
+search state to preserve here, so nothing is gained by handing the move back.
+
+The three entry points (=pane-jump=, =pane-jump rows [fragment]=,
+=pane-jump jump <pane_id>=) are the =sift rows= / =cc-fleet rows= seam, so the
+list half and the move half are asserted headlessly without a terminal.
+
+** Consequences
+
+- Good, because the roster is on screen before the first keystroke and narrows
+  on every one, which is the whole complaint against the previous binding.
+- Good, because a miss is an empty list. Enter on it prints
+  =pane-jump: no pane title matches= and moves nothing, where the previous
+  binding showed the full tree.
+- Good, because Enter is the only confirming key: the selection sits on the
+  first row and resets there whenever the query changes.
+- Good, because =rows= and =jump= are separately testable, so R1 to R4 are
+  proven without driving a TUI.
+- Bad, because roughly 250 lines of =sift='s terminal layer (=RawMode=,
+  =read_key=, the UTF-8 cell-width decoder, =tmux_out= / =tmux_run=) are
+  *copied*, not shared. A header both tools include is the clean form and edits
+  =sift=, its ADR and its atlas node in the same change; deferred, and named as
+  a follow-up in the spec's flagged concerns.
+- Bad, because a fix landing in one copy of that layer and not the other is now
+  possible. The mitigation is a header comment in =pane-jump/src/main.cpp=
+  naming the source file it was copied from.
+- Bad, because there is a *second* cmake project. The fresh-machine bootstrap
+  in this repo's =CLAUDE.md= and in the parent =~/CLAUDE.md= gains a build
+  command; =cargo build --release= alone leaves ~prefix g~ on its =not built=
+  stub. The alternative, one top-level =tools/CMakeLists.txt= building both,
+  would change =sift='s documented commands and was not chosen.
+- Neutral, because the two cmake projects share =target/release/= as their
+  output directory but not their build trees (=target/cmake-build= and
+  =target/cmake-build-pane-jump=), so neither can corrupt the other's cache.
+  =cargo clean= still deletes both binaries, the cost =sift= already carries.
+- Neutral, because the match rule is kept identical to the binding it replaces:
+  case-insensitive substring on the title, the =#{mi:*x*,…}= rule, not fuzzy.
+  Folding non-ASCII with =towlower= under the user's locale is not tmux's own
+  =mi= implementation and is [未驗證] for scripts with case beyond ASCII.
+
+* Pros and Cons of the Options
+
+** Option 1: Keep =command-prompt= + =choose-tree -f=
+- Good, because it is two lines of config and no binary, and it cannot drift
+  from tmux's own match semantics.
+- Good, because it needs no build step, so it survives =cargo clean= and a
+  fresh machine.
+- Bad, because nothing is visible while typing, so the fragment is committed
+  blind.
+- Bad, because a fragment matching nothing shows every pane — tmux ignores an
+  empty-result filter, and that is not configurable.
+- Bad, because Enter alone does not move the client: the cursor opens on the
+  session row.
+
+** Option 2: Popup + a bash script around =fzf=
+- Good, because =fzf= supplies the filter loop, so no interaction code is
+  written or maintained here.
+- Good, because =cc-fleet= already proves the shape works from inside
+  =display-popup -E=, including the =switch-client= from within the popup
+  ([[file:../../tools/cc-fleet/src/main.rs][=cc-fleet/src/main.rs=]]).
+- Bad, because it adds a runtime dependency on =fzf= to a key that otherwise
+  needs only libc and tmux.
+- Bad, because the match rule becomes =fzf='s fuzzy scoring rather than the
+  substring rule the key had, unless it is switched off by flags.
+- Bad, because restricting the match to the title column while displaying the
+  location and command columns is =--with-nth= / =--nth= bookkeeping in a shell
+  string, the layer where quoting breaks.
+- Rejected by user directive 2026-09-03, not by measurement.
+
+** Option 3: Popup + an own C++ TUI
+- Good, because every requirement above is a property of code that is written
+  here: first-row selection, title-only matching, an empty list on a miss.
+- Good, because it inherits =sift='s proven terminal layer and its build,
+  output path and load-time guard, so the key behaves like =prefix /= when the
+  binary is missing.
+- Bad, because it is interaction code to maintain — the cost ADR-0001 declined
+  and ADR-0005 accepted for one key. This is the second key.
+- Bad, because the terminal layer is duplicated rather than shared.
+
+* Notes
+
+** The record number
+
+=docs/adr/= holds 0001 to 0005 and 0007; *0006 is absent*. This record takes
+0008 rather than filling that gap, so no reader has to ask whether 0006 was
+reused or renumbered. Whether 0006 was reserved for something is [未驗證] —
+the directory was listed, nothing states what the number was for.
+
+** Status of the live key
+
+Every behaviour cited above was measured on throwaway servers, per the runbook's
+testing note: =send-keys= injects into a pane and bypasses the prefix key table,
+so a bound key can only be exercised through a client attached to a nested
+server. The bound key pressed by hand on the user's own server is [未驗證]
+until the user reports it; =tmux list-keys -T prefix g= after =source-file= is
+what the config change itself proves.
