@@ -2,8 +2,9 @@
 
 Author: claude (agent)
 Created: 2026-09-03
-Status: approved
+Status: implemented
 Approved: 2026-09-03
+Implemented: 2026-09-03 merge 5d447c8
 
 Implements [`spec.md`](spec.md) as amended 2026-09-03 (C++ tool, own TUI, no
 fzf). Requirement numbers R1 to R10 are the spec's. Redrafted 2026-09-03; the

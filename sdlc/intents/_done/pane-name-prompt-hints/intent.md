@@ -2,8 +2,9 @@
 
 Author: fenrir
 Created: 2026-09-03
-Status: accepted
+Status: done
 Accepted: 2026-09-03
+Closed: 2026-09-03 merge 5d447c8
 
 ## Problem
 
