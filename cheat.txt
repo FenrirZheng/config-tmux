@@ -4,6 +4,7 @@
   PANES        prefix "        split below            prefix %   split right
                prefix o        jump to pane (ace: press the letter shown)
                prefix O        swap with pane (ace)
+               prefix g        jump to pane by title (Down Down, then Enter)
                prefix z        zoom / unzoom          prefix x   kill pane
 
   WINDOWS      prefix c        new                    prefix ,   rename
