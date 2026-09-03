@@ -2,7 +2,8 @@
 
 Author: claude (agent)
 Created: 2026-09-03
-Status: draft
+Status: accepted
+Accepted: 2026-09-03
 
 Reads [`intent.md`](intent.md) (`Status: accepted`, 2026-09-03). Every measurement
 below was taken 2026-09-03 on tmux 3.5a and fzf 0.60 (`tmux -V`, `fzf --version`)
