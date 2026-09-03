@@ -1,0 +1,29 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "release",
+      "displayName": "release (Ninja)",
+      "description": "The binary `prefix g` runs. Output: ../target/release/pane-jump",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../target/cmake-build-pane-jump",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "asan",
+      "displayName": "asan (Ninja, ASan+UBSan)",
+      "description": "Instrumented twin. Output: ../target/release/pane-jump-asan — a different name on purpose",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../target/cmake-asan-pane-jump",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "PANE_JUMP_SANITIZE": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "release", "configurePreset": "release" },
+    { "name": "asan",    "configurePreset": "asan" }
+  ]
+}
