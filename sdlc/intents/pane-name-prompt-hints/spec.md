@@ -5,9 +5,13 @@ Created: 2026-09-03
 Status: accepted
 Accepted: 2026-09-03
 
-Reads [`intent.md`](intent.md) (`Status: accepted`, 2026-09-03). Every measurement
-below was taken 2026-09-03 on tmux 3.5a and fzf 0.60 (`tmux -V`, `fzf --version`)
-unless marked `[未驗證]`.
+Reads [`intent.md`](intent.md) (`Status: accepted`, amended 2026-09-03). Every
+measurement below was taken 2026-09-03 on tmux 3.5a unless marked `[未驗證]`.
+
+Amended 2026-09-03 after acceptance, by user directive in the session that wrote
+it: the helper is a C++ binary under `tools/` owning its own TUI, not a bash
+script around fzf. The user chose "Own TUI, no fzf" at the prompt. R4 and R7 and
+the whole Design section changed; R1 to R3, R5, R6, R8 to R10 stand as accepted.
 
 ## Requirements
 
@@ -25,165 +29,194 @@ Numbered so `plan.md` and the review can cite them.
   pane: session, window and pane in one move. The cursor opens on the first row, so
   a fragment that narrows the list to one pane needs no `Down`. This is the intent's
   success criterion: `prefix g`, read, type, `Enter`, target active.
-- R4 **Fail closed on a miss.** With zero matching rows, `Enter` moves nothing, prints
-  `pane-jump: no pane title matches` through `tmux display-message`, and the helper
-  exits non-zero. No full tree, no silent success.
-- R5 **Cancel is silent.** `Esc` or `C-c` closes the popup, moves nothing, prints
-  nothing.
-- R6 **Titles are read, never written.** The helper contains no `select-pane -T` and
+- R4 **Fail closed on a miss.** With zero matching rows, `Enter` moves nothing and
+  prints `pane-jump: no pane title matches` through `display-message -l`. No full
+  tree, no silent success. Exit status is 0, per the toolset invariant
+  (`tools/ARCHITECTURE.org:139`: a non-zero exit from a key binding surfaces as a
+  tmux error popup). `switch-client` is never called with an empty target.
+- R5 **Cancel is silent.** `Esc`, `C-c` or `C-g` closes the popup, moves nothing,
+  prints nothing.
+- R6 **Titles are read, never written.** The tool contains no `select-pane -T` and
   no `rename-window`. Claude-pane readers (`talk ping`, `cc-attend`, `cc-fleet`) are
   unaffected.
-- R7 **Missing fzf fails closed.** If `fzf` is not on `PATH`, the helper prints
-  `pane-jump: fzf not installed` via `display-message` and exits 1. fzf is already a
-  runtime dependency of `prefix S` (`cc-fleet`), so this adds no new dependency class.
+- R7 **Missing binary fails visibly.** The binding is guarded by the same
+  load-time `if-shell '[ -x …]'` as `sift` (`claude.conf:196`); when the binary is
+  not built, `prefix g` prints a `not built` message naming the build command. No
+  runtime dependency beyond libc and tmux.
 - R8 **Same key, old binding replaced.** The `command-prompt` + `choose-tree` line in
-  `tmux.conf` is replaced, not kept beside the new one. Because the key is rebound
-  rather than unbound, `tmux source-file ~/.tmux.conf` is enough to install it on a
-  running server; the stale-binding hazard noted at `tmux.conf:18-23` applies only to
-  a removed key.
+  `tmux.conf` is removed and the key is bound in `claude.conf`, where every
+  `tools/` binary key lives. Because the key is rebound rather than left unbound,
+  `tmux source-file ~/.tmux.conf` installs it on a running server; the
+  stale-binding hazard at `tmux.conf:18-23` applies only to a removed key.
 - R9 **Docs move with the key.** `cheat.txt:7` loses `(Down Down, then Enter)` and
   stays one line, at most 81 cells wide, so the `prefix ?` popup height at
   `tmux.conf:47` does not change. `README.md:7` names the popup instead of the
-  filtered tree. `runbooks/switch-pane-by-name.md` marks the popup as shipped, keeps
-  Option A as the no-helper fallback, and its Verify and Troubleshoot sections
-  describe the new behaviour.
-- R10 **Verified on a throwaway server.** The build proves R1 to R5 and R7 on a nested
+  filtered tree. `runbooks/switch-pane-by-name.md` marks the tool as shipped, keeps
+  Option A as the no-binary fallback, and gains Install, Verify and Troubleshoot
+  content for the tool. `tools/ARCHITECTURE.org`, `tools/atlas/`, and the
+  `.tmux/CLAUDE.md` crate count name the new tool.
+- R10 **Verified on a throwaway server.** The build proves R1 to R5 on a nested
   `tmux -L` server with panes titled `alpha-build`, `beta-server`, `gamma-notes`, per
-  the runbook's testing note; the user's live server is only read from. The bound
-  key on the live server stays `[未驗證]` until the user presses it; the spec does not
-  claim otherwise.
+  the runbook's testing note and the `verify-sift-jump.sh` harness shape; the user's
+  live server is only read from. The bound key on the live server stays `[未驗證]`
+  until the user presses it; the spec does not claim otherwise.
 
 ## Design
 
-### Shape: popup running fzf, then one `switch-client`
+### Shape: a popup running a C++ TUI, then one `switch-client`
 
-Plain tmux cannot do R1 and R3 together. `command-prompt` is a one-line prompt with no
-list; `choose-tree -f` lists but ignores an empty filter (R4 fails) and opens on the
-session row (R3 fails). `display-popup -E` around an fzf picker does both, and the repo
-already ships that shape for Claude panes at `claude.conf:89` (`prefix S`). This is the
-"fzf popup that filters as you type" answer to the intent's first open question.
+Plain tmux cannot do R1 and R3 together. `command-prompt` is a one-line prompt with
+no list; `choose-tree -f` lists but ignores an empty filter (R4 fails) and opens on
+the session row (R3 fails); nothing in tmux filters a list as you type. This is the
+same gap ADR-0005 records for regex search, and the answer is the same shape:
+`display-popup -E` around a program that owns the keystroke loop and hands the final
+move back to tmux.
 
-The intent allows a helper script and forbids a new Rust crate unless tmux alone
-cannot do it. A bash helper is enough: the filter logic is fzf's, and the jump is one
-tmux command.
+The program is `pane-jump`, C++20, one translation unit, no dependencies beyond
+libc, built by cmake into `tools/target/release/` exactly as `sift` is. It reuses
+`sift`'s terminal layer by copy: `RawMode`, `TermSize`, `read_key`, the UTF-8
+cell-width decoder, `tmux_out` / `tmux_run` over `execvp` with an argv vector. No
+fzf, no ncurses.
 
-### Helper: `bin/pane-jump`
+### Entry points
 
-New tracked file, executable, bash with `set -euo pipefail`. Three entry points, so
-the two halves are testable without a TUI, the same split `cc-fleet rows` uses:
+Three, so the two halves are testable without a TUI, the seam `sift rows` and
+`cc-fleet rows` already use:
 
-| invocation | does |
-|---|---|
-| `pane-jump` | rows → fzf → jump; the bound form |
-| `pane-jump rows` | prints the rows only, tab-separated: `pane_id`, `session:window.pane`, `command`, `title` |
-| `pane-jump jump <pane_id>` | the guarded `switch-client`; empty or missing id exits 2 with a message |
+| invocation | does | exit |
+|---|---|---|
+| `pane-jump` | rows → TUI → jump; the bound form | 0 always |
+| `pane-jump rows [<fragment>]` | prints the rows, tab-separated: `pane_id`, `session:window.pane`, `command`, `title`; with a fragment, only the rows R2 would show | 0 |
+| `pane-jump jump <pane_id>` | the guarded `switch-client`; an empty id prints `pane-jump: no pane selected` to stderr and calls nothing | 0 |
 
-Rows come from one call:
+### Rows
 
-```bash
-tmux list-panes -a -F '#{pane_id}	#{session_name}:#{window_index}.#{pane_index}	#{pane_current_command}	#{pane_title}'
+One tmux call, argv vector, never a shell string:
+
+```
+tmux list-panes -a -F '#{pane_id}<TAB>#{session_name}:#{window_index}.#{pane_index}<TAB>#{pane_current_command}<TAB>#{pane_title}'
 ```
 
 Measured on the live server: tab-separated, one line per pane, titles with the `✳`
-prefix pass through intact (`cat -A` shows `M-bM-^\M-3`, the UTF-8 bytes).
+prefix pass through intact. Row order is `list-panes` order: session, window, pane
+index. The current pane is listed like any other.
 
-fzf invocation, deciding R2 and R3:
+### Match
 
-```bash
-fzf --delimiter='\t' --with-nth=2.. --nth=4 --exact -i \
-    --layout=reverse --prompt='pane name: ' --no-multi
-```
+Case-insensitive substring on the title field: both sides are decoded to code
+points, folded with `towlower` under the user's locale, and compared as sequences.
+ASCII behaves as today's `#{mi:}`; non-ASCII folding is best effort and
+`[未驗證]` against tmux's own `mi` for non-ASCII input. The query is a plain
+string, not a regex, so `.` and `*` are literal.
 
-- `--with-nth=2..` hides the id column, `--nth=4` restricts matching to the title
-  column (R2).
-- `--exact -i` is case-insensitive substring, the current rule. fzf's default fuzzy
-  match would also hit `cs` against `Claude Code Skills`; the intent asked for
-  "as today", so exact wins. Flagged below as a taste choice.
-- `--layout=reverse` puts the prompt at the top and the first match directly under
-  it, the row `Enter` selects (R3).
+### TUI
 
-Exit handling, deciding R4 and R5. Measured with `--filter`: a match exits 0 and
-prints the row; no match exits 1 and prints nothing. Interactive fzf documents 130
-for `Esc` / `C-c`:
+Header row: `pane name: <query>` and `<shown>/<total>` at the right. Then one row
+per match, `location` and `command` dimmed, title plain, the selected row inverted.
+Rows longer than the popup are cut at a cell boundary. Keys, the `sift` set minus
+ordinal mode: text appends to the query, `Backspace` removes one character, `C-w`
+one word, `C-u` the query; `Up` / `Down` / `C-p` / `C-n`, `PgUp` / `PgDn`,
+`Home` / `End` move the selection; `Enter` jumps; `Esc` / `C-c` / `C-g` cancel.
+Selection resets to the first row whenever the query changes (R3).
 
-| fzf exit | selection | helper does |
-|---|---|---|
-| 0 | one row | cut field 1, `pane-jump jump <id>` |
-| 1 | none | `display-message 'pane-jump: no pane title matches'`, exit 1 |
-| 130 | none | exit 130, no message |
+### Jump
 
-The jump is a single `tmux switch-client -t "$id"`. The runbook measured it on
-2026-09-03: `switch-client -t %0` changes session, window and pane in one call, and
-`switch-client -t ""` exits 0 doing nothing, which is why `jump` refuses an empty
-argument before calling tmux. That a `switch-client` issued from inside
-`display-popup -E` moves the client that opened the popup is proven by `cc-fleet`,
-which calls `focus_pane(None, id)` from the same position
-(`tools/cc-fleet/src/main.rs:68`, `tools/tmuxlib/src/lib.rs:339-347`).
+`Enter` on a row restores the terminal, then runs `tmux switch-client -t <pane_id>`.
+The runbook measured on 2026-09-03 that `switch-client -t %0` changes session,
+window and pane in one call, and that a `switch-client` issued from inside
+`display-popup -E` moves the client that opened the popup (`cc-fleet` does it from
+the same position, `tools/cc-fleet/src/main.rs:68`). `Enter` on an empty list prints
+the R4 message and returns to the loop; it does not close the popup.
+
+### Format-context safety
+
+Titles are untrusted text. They enter only the popup rendering and the `rows`
+stdout; every `display-message` carries `-l`; tmux is always spawned through
+`execvp` with an argv vector. This is the `seek` / `sift` route from
+`tools/ARCHITECTURE.org:115`, and the proof obligation is the same: grep the source
+for `display-message` without `-l` and for any `system`/`popen`, both zero.
 
 ### Binding
 
-In `tmux.conf`, replacing lines 109-110 and their comment block, staying in
-`tmux.conf` rather than `claude.conf` because the key is not Claude-specific:
+In `claude.conf`, after the `sift` block, with the same load-time guard:
 
 ```tmux
-bind -T prefix g display-popup -E -w 80% -h 60% -T ' pane name ' "~/.tmux/bin/pane-jump"
+if-shell '[ -x ~/.tmux/tools/target/release/pane-jump ]' {
+  bind -T prefix g display-popup -E -w 80% -h 60% -T ' pane name ' \
+    "~/.tmux/tools/target/release/pane-jump"
+} {
+  bind -T prefix g display-message -l 'pane-jump: not built — cd ~/.tmux/tools && cmake -S pane-jump -B target/cmake-build-pane-jump -DCMAKE_BUILD_TYPE=Release && cmake --build target/cmake-build-pane-jump && tmux source-file ~/.tmux.conf'
+}
 ```
 
-Size copied from the project picker at `claude.conf:102`. Absolute path, the shape
-every other popup in the repo uses.
+`tmux.conf` lines 101-110 are removed; a two-line comment points at `claude.conf`.
+The build tree is its own directory under `tools/target/`, already ignored, so the
+two cmake projects do not share a cache. Cost inherited from `sift`: `cargo clean`
+deletes this binary too.
 
 ### Not included, with reason
 
-- **Auto-jump on a unique match.** fzf 0.53+ can accept as soon as one row remains.
-  The intent's success criterion names "one confirming key", and an auto-jump would
-  fire on the first letter that happens to be unique; left out, and left open below.
-- **Preview of the target pane.** `cc-fleet` shows one. It is a second feature, not
-  part of "hint, type, jump"; left out.
-- **Current-pane exclusion or marking.** The current pane is a legal target; a
-  no-op jump is harmless.
-- **Matching on the command column.** Excluded by R2; the column is display only.
+- **Auto-jump on a unique match.** The intent's success criterion names "one
+  confirming key"; an auto-jump would fire on the first letter that happens to be
+  unique. Left out and left open.
+- **Ordinal mode** (`ADR-0007`, left-Alt-digit). A second feature; the row count
+  here is small enough that `Down` suffices. Possible follow-up.
+- **Preview of the target pane.** `cc-fleet` shows one; not part of "hint, type,
+  jump".
+- **Current-pane exclusion or marking.** A no-op jump is harmless.
+- **Matching on the command column.** Excluded by R2; display only.
+- **A shared C++ terminal library.** Copying ~250 lines from `sift` is chosen over
+  extracting a header both tools include, because extraction edits `sift` and its
+  ADR/atlas in the same change. Named as a follow-up.
 
 ### Files that change
 
 | file | change |
 |---|---|
-| `bin/pane-jump` | new, executable |
-| `tmux.conf` | `prefix g` binding and its comment |
+| `tools/pane-jump/CMakeLists.txt`, `CMakePresets.json`, `src/main.cpp` | new |
+| `tools/pane-jump/verify-pane-jump.sh` | new headless harness, `verify-sift-jump.sh` shape |
+| `claude.conf` | new guarded `prefix g` block after the `sift` block; header build comment |
+| `tmux.conf` | lines 101-110 removed, pointer comment left |
 | `cheat.txt` | line 7 text, same line count and width budget |
 | `README.md` | line 7 entry |
-| `runbooks/switch-pane-by-name.md` | shipped recipe, Verify, Troubleshoot, Roll back |
+| `runbooks/switch-pane-by-name.md` | shipped recipe, Install, Verify, Troubleshoot, Roll back |
+| `tools/ARCHITECTURE.org` | Crates table row, Key bindings row, the "except sift" sentence |
+| `tools/atlas/pane-jump.org`, `tools/atlas/index.org` | new node, index entry, Coverage counts |
+| `CLAUDE.md` (this repo) | "eleven Rust crates plus sift" sentence |
+| `docs/adr/0008-own-the-interaction-loop-for-pane-selection.org` | short ADR citing 0005 as precedent |
 
-Untouched: `claude.conf`, `tools/`, `plugins/`, `.gitignore` (a new tracked `bin/`
-needs no rule).
+Untouched: `tools/sift/`, `tools/tmuxlib/`, `plugins/`, `.gitignore`,
+`tools/.gitignore` (`target/` already covers the new build tree). Outside this
+repo: the parent dotfiles `~/CLAUDE.md` build snippet lists one cmake tool and
+needs a second line; not part of this change, flagged below.
 
 ## Flagged concerns
 
-Single-operator repo: the policy owner for each is the user, fenrir. Each is a
-decision the reviewer settles before the plan is written.
+Single-operator repo: the policy owner for each is the user, fenrir.
 
-1. **New top-level `bin/`.** The repo has `plugins/` for bash plugins and `tools/` for
-   the cargo workspace, and no home for a standalone script. `bin/pane-jump` is the
-   smallest addition; the alternative is `plugins/tmux-pane-jump/` mirroring
-   `tmux-ace-window`, which costs a loader and a `.tmux` entry file for one script.
-2. **fzf on a non-Claude key.** `prefix g` now depends on fzf; today it depends on
-   tmux only. R7 makes the failure visible. The same dependency already gates
-   `prefix S`, `prefix C` pickers.
-3. **Exact substring, not fuzzy.** Chosen to match the current rule. Switching to
-   fuzzy is one flag (`--exact` removed) and can be decided at review.
-4. **Runbook scope.** The runbook is 300 lines built around `choose-tree`; R9 rewrites
-   its recipe and tables rather than appending a third option, so its "what tmux
-   cannot do" measurements stay and its shipped recipe changes. A reviewer who wants
-   the old Option A text preserved verbatim should say so before the plan.
+1. **Copied terminal layer.** ~250 lines of `sift` (`RawMode`, `read_key`, UTF-8)
+   are duplicated. A shared header is the clean form and touches `sift`; deferred.
+2. **Second cmake project.** The fresh-machine bootstrap in the parent
+   `~/CLAUDE.md` and in this repo's `CLAUDE.md` gains a build command. The
+   alternative, one top-level `tools/CMakeLists.txt` building both, changes
+   `sift`'s documented commands; not chosen.
+3. **Exact substring, not fuzzy.** Chosen to match the current rule. Fuzzy is a
+   scoring function away and can be decided at review.
+4. **ADR number.** `docs/adr/` holds 0001 to 0005 and 0007; 0006 is absent. The
+   new record takes 0008 rather than filling the gap, so a reader never wonders
+   whether 0006 was reused. Say so if 0006 was reserved.
+5. **Runbook scope.** The runbook is 300 lines built around `choose-tree`; R9
+   rewrites its recipe and tables rather than appending, so its "what tmux cannot
+   do" measurements stay and its shipped recipe changes.
 
 ## Open questions carried from intent.md
 
-- **Presentation** — answered: fzf popup, filtering as you type, the `cc-fleet`
+- **Presentation** — answered: a popup TUI, filtering as you type, the `sift`
   shape. Not `display-message` before a prompt, not a pre-positioned `choose-tree`.
-- **Ambiguity on several matches** — answered: the list is already on screen and
-  narrows as you type; `Enter` takes the highlighted row, `Down` picks another. No
-  separate "unique jumps, multi lists" branch is needed because the list is always
-  shown. Whether a unique remaining match should also auto-accept stays open; the
-  spec ships without it (see Not included).
+- **Ambiguity on several matches** — answered: the list is always on screen and
+  narrows as you type; `Enter` takes the highlighted row, `Down` picks another.
+  Whether a unique remaining match should also auto-accept stays open; the spec
+  ships without it.
 - **Match rule** — answered: substring, case-insensitive, title column only (R2).
-- **A miss** — answered: empty list while typing; `Enter` on it prints a message and
-  closes, never the full tree (R4).
+- **A miss** — answered: empty list while typing; `Enter` on it prints a message
+  and stays open, never the full tree (R4).
