@@ -4,230 +4,276 @@ Author: claude (agent)
 Created: 2026-09-03
 Status: draft
 
-Implements [`spec.md`](spec.md) (`Status: accepted`, 2026-09-03). Requirement
-numbers R1 to R10 are the spec's. Facts marked with a date were probed on that date
-on tmux 3.5a and fzf 0.60; anything else is `[未驗證]`.
+Implements [`spec.md`](spec.md) as amended 2026-09-03 (C++ tool, own TUI, no
+fzf). Requirement numbers R1 to R10 are the spec's. Redrafted 2026-09-03; the
+earlier draft (commit `326221c`) planned a bash script and is superseded whole.
+Facts with a date were probed then on tmux 3.5a; anything else is `[未驗證]`.
 
 ## Files that change
 
 | file | change | requirement |
 |---|---|---|
-| `bin/pane-jump` | new, `chmod +x`, bash | R1 to R7 |
-| `tmux.conf` lines 101-110 | replace the `prefix g` comment block and two-line binding | R8 |
-| `cheat.txt` line 7 | replace the text after `prefix g`, keep one line, at most 81 cells (today 77) | R9 |
-| `README.md` line 7 | replace the entry text | R9 |
-| `runbooks/switch-pane-by-name.md` | Option A demoted to fallback, new shipped recipe, Verify table replaced, Troubleshoot and Roll back updated | R9, R10 |
+| `tools/pane-jump/src/main.cpp` | new, ~550 lines, C++20, one translation unit | R1 to R6 |
+| `tools/pane-jump/CMakeLists.txt` | new, copy of `tools/sift/CMakeLists.txt` with `sift` → `pane-jump` | build |
+| `tools/pane-jump/CMakePresets.json` | new, copy of sift's with `binaryDir` `../target/cmake-build-pane-jump` and `../target/cmake-asan-pane-jump` | build |
+| `tools/pane-jump/verify-pane-jump.sh` | new headless harness | R10 |
+| `claude.conf` | guarded `prefix g` block after the `sift` block (line 213); header comment lines 10-13 name the second cmake tool | R7, R8 |
+| `tmux.conf` lines 101-110 | removed; two-line pointer comment | R8 |
+| `cheat.txt` line 7 | text after `prefix g`; one line, at most 81 cells (today 77) | R9 |
+| `README.md` line 7 | entry text | R9 |
+| `runbooks/switch-pane-by-name.md` | shipped recipe, Install, Verify, Troubleshoot, Roll back | R9, R10 |
+| `tools/ARCHITECTURE.org` | line 62 sentence, Crates table row after line 92, Key bindings row after line 133 | R9 |
+| `tools/atlas/pane-jump.org`, `tools/atlas/index.org` | new node; index entry under Subsystems; Coverage `8 nodes over 16` → `9 nodes over 17`, and the "one non-Rust tool" phrase | R9 |
+| `CLAUDE.md` (this repo) | "eleven Rust crates plus `sift`" → "plus `sift` and `pane-jump`, both C++" | R9 |
+| `docs/adr/0008-own-the-interaction-loop-for-pane-selection.org` | new, MADR sections as 0005 | R9 |
 
-Untouched: `claude.conf`, `tools/`, `plugins/`, `.gitignore`, `CLAUDE.md`. No
-`tools/atlas/` node covers these files, so no atlas update is due.
+Untouched: `tools/sift/`, `tools/tmuxlib/`, every Rust crate, `plugins/`,
+`.gitignore`, `tools/.gitignore`. Outside the repo, not in this change: the parent
+`~/CLAUDE.md` tmux build snippet, spec concern 2.
 
 ## Order of work
 
 Each step names its check. A step with no executable oracle names what the reviewer
-reads. Work on branch `intent/pane-name-prompt-hints`; one commit per step in the
-repo's `<area>: <verb> <thing>` style.
+reads. Branch `intent/pane-name-prompt-hints`; one commit per step, subjects in
+the repo's `<area>: <verb> <thing>` style (`tools: add pane-jump …`,
+`tmux: bind prefix g to pane-jump`, `docs: …`).
 
-1. **Write `bin/pane-jump`.** Contents:
+1. **Scaffold the cmake project.** Copy `tools/sift/CMakeLists.txt` and
+   `CMakePresets.json` into `tools/pane-jump/`, rename target and option
+   (`SIFT_SANITIZE` → `PANE_JUMP_SANITIZE`, output name `pane-jump` /
+   `pane-jump-asan`), change both `binaryDir` values so the two projects never
+   share a cache, keep `RUNTIME_OUTPUT_DIRECTORY` at `../target/release`. Rewrite
+   the header comment for this tool. Write a `src/main.cpp` holding only `main`
+   returning 0.
 
-   ```bash
-   #!/usr/bin/env bash
-   # pane-jump: list every pane's title, filter as you type, Enter jumps.
-   # Bound to `prefix g` inside display-popup -E (tmux.conf). Titles are only
-   # ever read here; see runbooks/switch-pane-by-name.md, "Do not write pane titles".
-   set -euo pipefail
+   Check: from `~/.tmux/tools`, `cmake -S pane-jump -B target/cmake-build-pane-jump
+   -DCMAKE_BUILD_TYPE=Release && cmake --build target/cmake-build-pane-jump` exits
+   0 and `target/release/pane-jump` exists; `cmake --preset release` from
+   `tools/pane-jump` does the same when ninja is present. `target/release/sift`
+   is unchanged (`stat -c %Y` before and after).
 
-   rows() {
-     tmux list-panes -a -F \
-       '#{pane_id}	#{session_name}:#{window_index}.#{pane_index}	#{pane_current_command}	#{pane_title}'
-   }
+2. **Write `src/main.cpp`.** Layout, top to bottom, mirroring `sift` so a reader of
+   one can read the other:
 
-   jump() {
-     local id=${1:-}
-     if [ -z "$id" ]; then
-       tmux display-message 'pane-jump: no pane selected'
-       exit 2
-     fi
-     tmux switch-client -t "$id"
-   }
+   - Header comment: usage (`pane-jump`, `pane-jump rows [fragment]`, `pane-jump
+     jump <pane_id>`), the four inherited invariants (exit 0; no format context
+     for titles; never write titles; tmux via `execvp` argv), the note that the
+     terminal layer is copied from `sift/src/main.cpp` and where.
+   - Copied verbatim from `sift`: `Fd`, `write_all`, `tmux_out`, `tmux_run`,
+     `say` (`display-message -l`), the UTF-8 decoder and `utf8_cells` with their
+     `static_assert` tests, `RawMode`, `TermSize` / `term_size`, `Key` / `Input` /
+     `read_byte` / `read_key` with the `AltDigit` case dropped, the escape
+     constants, `on_winch`.
+   - New:
 
-   case ${1:-} in
-     rows) rows; exit 0 ;;
-     jump) shift; jump "$@"; exit 0 ;;
-     '') ;;
-     *) echo "usage: pane-jump [rows | jump <pane_id>]" >&2; exit 64 ;;
-   esac
+     ```cpp
+     struct Row { std::string id, where, cmd, title; };
+     std::vector<Row> list_rows();               // list-panes -a -F, split on '\t'
+     std::u32string fold(std::string_view);      // decode + towlower per code point
+     bool title_matches(const Row&, const std::u32string& needle);  // substring
+     struct Ui { std::vector<Row> rows; std::string query; std::vector<size_t> shown;
+                 size_t sel = 0, top = 0; std::string notice; };
+     void refilter(Ui&);                         // shown = matching indices; sel = top = 0
+     void draw(const Ui&);                       // header, rows, invert sel, cut at cells
+     bool jump(const std::string& id);           // empty → say + false; else switch-client
+     int run_ui();  int run_rows(const char* fragment);  int run_jump(const char* id);
+     ```
 
-   if ! command -v fzf >/dev/null 2>&1; then
-     tmux display-message 'pane-jump: fzf not installed'
-     exit 1
-   fi
+   - `run_ui`: `list_rows()`; empty → `say("pane-jump: no panes")`, return 0.
+     `RawMode`; engage fails → `say("pane-jump: no terminal (run it from a tmux
+     popup)")`, return 0. Loop on `read_key`: `Text` / `Backspace` / `KillWord` /
+     `KillLine` edit `query` and `refilter`; `Up` / `Down` / `PgUp` / `PgDn` /
+     `Home` / `End` move `sel` within `shown`; `Enter` with `shown` empty sets
+     `notice = "pane-jump: no pane title matches"` and redraws (R4, popup stays
+     open); `Enter` with a selection does `term.restore()` then `jump(id)`, and
+     returns 0 either way; `Esc` returns 0 with nothing said (R5). Each `draw`
+     shows `notice` on the header's right and clears it on the next key.
+   - `run_rows`: same rows, filtered when a fragment is given, one buffered
+     `write_all` of `id\twhere\tcmd\ttitle\n` lines. `run_jump`: `jump(argv[2])`.
+     Both return 0.
+   - `main`: `setlocale(LC_ALL, "")`, dispatch on `argv[1]`.
 
-   rc=0
-   sel=$(rows | fzf --delimiter=$'\t' --with-nth=2.. --nth=4 --exact -i \
-           --layout=reverse --prompt='pane name: ' --no-multi) || rc=$?
-   case $rc in
-     0)   jump "$(printf '%s' "$sel" | cut -f1)" ;;
-     1)   tmux display-message 'pane-jump: no pane title matches'; exit 1 ;;
-     130) exit 130 ;;
-     *)   tmux display-message "pane-jump: fzf exited $rc"; exit "$rc" ;;
-   esac
-   ```
+   Row shape is read once at startup. The width column budget in `draw`:
+   `where` left-aligned to the widest `where` plus one, `cmd` to 10 cells, the
+   rest for `title`; a title cut at a cell boundary so a wide glyph never
+   straddles the edge (`utf8_cells`).
 
-   The literal tab inside the `-F` string is a real tab character, not `\t`; tmux
-   formats do not unescape. `--delimiter=$'\t'` is bash's tab. `--nth=4` counts
-   original fields, so the hidden id column still shifts the title to field 4.
+   Check: the build from step 1 with `-Wall -Wextra -Wpedantic -Wshadow
+   -Wconversion -Wsign-conversion -Wold-style-cast` (inherited from the copied
+   CMakeLists) compiles with zero warnings; `ug -c 'display-message' src/main.cpp`
+   equals `ug -c 'display-message", "-l"' src/main.cpp`; `ug -c -e 'system(' -e
+   'popen(' -e 'select-pane' -e 'rename-window' src/main.cpp` prints 0 (R6, format
+   safety). On the live server, read only: `target/release/pane-jump rows | wc -l`
+   equals `tmux list-panes -a | wc -l`, and `pane-jump rows claude | cut -f4` are
+   all titles containing `claude` case-insensitively.
 
-   Check: `bash -n bin/pane-jump` exits 0; `shellcheck bin/pane-jump` prints
-   nothing if shellcheck is installed, else skipped and reported as such;
-   `bin/pane-jump rows` on the live server prints one tab-separated line per pane
-   and `bin/pane-jump rows | wc -l` equals `tmux list-panes -a | wc -l`.
-   Live server is read only here: `rows` runs `list-panes`, nothing else.
+3. **Write and run `verify-pane-jump.sh`** (R1 to R4 headless, R10). Same skeleton
+   as `records/2026-08-27-2240-tmux-sift/assets/scripts/verify-sift-jump.sh`:
+   `set -u`, `ok`/`bad`/`check`, throwaway server `-L pj_verify`, `trap` kill,
+   `TMUX="$SOCK,0,0"` so bare `tmux` inside the binary reaches it, and the same
+   control case first (the harness targets the throwaway server, not the user's).
+   Because `switch-client` needs an attached client, a second server `-L
+   pj_outer` runs one pane holding `tmux -L pj_verify attach`.
 
-2. **Prove the halves on a throwaway server** (R1, R3, R4, R7 guards, R10). Nothing
-   here touches the live server. Two nested servers, the shape the runbook's Verify
-   section already uses: `pj` holds the panes, `outer` holds the client attached to
-   `pj`, because `switch-client` needs an attached client.
+   Fixture: session `t`, one window, three panes titled `alpha-build`,
+   `beta-server`, `gamma-notes` via `select-pane -T` (a throwaway server, so the
+   never-write-titles rule does not apply).
 
-   ```bash
-   tmux -L pj -f /dev/null new-session -d -s t -x 80 -y 24
-   tmux -L pj split-window -t t:0; tmux -L pj split-window -t t:0
-   tmux -L pj select-pane -t t:0.0 -T alpha-build
-   tmux -L pj select-pane -t t:0.1 -T beta-server
-   tmux -L pj select-pane -t t:0.2 -T gamma-notes
-   tmux -L outer -f /dev/null new-session -d -s o -x 100 -y 30 'tmux -L pj attach -t t'
-   PJ=$(tmux -L pj display -p '#{socket_path}')
-   ```
-
-   Then, with `TMUX="$PJ,0,0"` exported so bare `tmux` inside the script reaches
-   `pj`:
-
-   | probe | expected |
+   | assertion | want |
    |---|---|
-   | `bin/pane-jump rows` | three lines, field 4 is `alpha-build` / `beta-server` / `gamma-notes` |
-   | `bin/pane-jump rows \| fzf --filter=BETA --delimiter=$'\t' --nth=4 --exact -i` | one line, `beta-server`; exit 0 |
-   | same with `--filter=bash` | no output, exit 1 (command column not matched, R2) |
-   | same with `--filter=zzz` | no output, exit 1 |
-   | `bin/pane-jump jump %1` | exit 0, then `tmux -L pj display -p '#{pane_id}'` prints `%1` |
-   | `bin/pane-jump jump ''` | exit 2, nothing moves |
-   | `PATH=/nonexistent bin/pane-jump` | exit 1 (fzf guard; `tmux` must still resolve, so prepend a dir holding only a `tmux` symlink) |
+   | control: `TMUX=… tmux display -p '#{pane_id}'` equals `-L pj_verify`'s | equal |
+   | `pane-jump rows \| wc -l` | 3 |
+   | `pane-jump rows \| cut -f4` | `alpha-build`, `beta-server`, `gamma-notes` in that order |
+   | `pane-jump rows BETA \| cut -f4` | `beta-server` only (case-insensitive, R2) |
+   | `pane-jump rows bash \| wc -l` | 0 (command column not matched, R2) |
+   | `pane-jump rows zzz \| wc -l` | 0 |
+   | `pane-jump jump %1; tmux -L pj_verify display -p '#{pane_id}'` | `%1`, exit 0 |
+   | `pane-jump jump ''` stderr | contains `no pane selected`; active pane still `%1`; exit 0 |
+   | `pane-jump jump` (no arg) | same as empty |
 
-   Check: every row observed as expected; the observed values go into the runbook
-   Verify table in step 5. A row that differs stops the build and is reported.
+   Check: the script exits 0 with every line `ok`. A `FAIL` stops the build and is
+   reported verbatim.
 
-3. **Rebind `prefix g` in `tmux.conf`** (R8). Replace lines 101-110 with:
+4. **Prove the TUI end to end on the throwaway servers** (R1, R3, R4, R5). Keys go
+   to the `pj_outer` pane, whose terminal is the `pj_verify` client; `send-keys`
+   into a `pj_verify` pane would bypass the key table (runbook testing note).
+   Bind the key on `pj_verify` by hand with the exact `display-popup` line from
+   step 5, then:
+
+   | keys to `pj_outer` | then read | expected |
+   |---|---|---|
+   | `C-b g`, `gamma`, `Enter` | `tmux -L pj_verify display -p '#{pane_id}'` | `%2` |
+   | `C-b g`, `alpha`, `Enter` | same | `%0` |
+   | `C-b g`, `Enter` (no typing) | same | `%0`, the first row |
+   | `C-b g`, `zzz`, `Enter` | `tmux -L pj_verify display -p '#{popup_active}'`? no: capture the outer pane | popup still open, header shows `no pane title matches`; then `Escape` closes it, pane unchanged |
+   | `C-b g`, `beta`, `Escape` | pane id, `show-messages` | unchanged; no new message |
+
+   Sleep 0.3 s between key groups. Record observed values for the runbook.
+   Check: all five rows observed. Add these five as a second block of the harness
+   if they can be driven from the script (they can, with `send-keys -t pj_outer`
+   and `capture-pane -p -t pj_outer`); otherwise record them as run by hand,
+   dated, in the runbook.
+
+5. **Bind the key** (R7, R8). In `claude.conf`, after the `sift` block's closing
+   `}` at line 213, a comment block in the file's style (why a popup and a
+   program: tmux has no as-you-type pane filter; supersedes the 2026-09-03
+   `command-prompt` + `choose-tree` binding, which opened on the session row and
+   showed the full tree on a miss; pointer to ADR-0008 and the runbook), then:
 
    ```tmux
-   # prefix + g : jump to a pane by TITLE, across sessions. Opens a popup listing
-   # every pane; typing filters on the title (case-insensitive substring);
-   # Enter jumps. Esc cancels; a miss says so and moves nothing. bin/pane-jump
-   # holds the logic; recipe and measurements: runbooks/switch-pane-by-name.md.
-   # Replaced the command-prompt + choose-tree form on 2026-09-03 (that one
-   # opened on the session row and showed the full tree on a miss).
-   bind -T prefix g display-popup -E -w 80% -h 60% -T ' pane name ' "~/.tmux/bin/pane-jump"
+   if-shell '[ -x ~/.tmux/tools/target/release/pane-jump ]' {
+     bind -T prefix g display-popup -E -w 80% -h 60% -T ' pane name ' \
+       "~/.tmux/tools/target/release/pane-jump"
+   } {
+     bind -T prefix g display-message -l 'pane-jump: not built — cd ~/.tmux/tools && cmake -S pane-jump -B target/cmake-build-pane-jump -DCMAKE_BUILD_TYPE=Release && cmake --build target/cmake-build-pane-jump && tmux source-file ~/.tmux.conf'
+   }
    ```
 
-   No `unbind`: the key is rebound, so `source-file` replaces it on a running server.
+   Update the header comment at `claude.conf:10-13` to list both cmake builds.
+   In `tmux.conf`, delete lines 101-110 and leave:
 
-   Check: `tmux -L pj source-file ~/.tmux/tmux.conf` is not usable (it loads TPM
-   and the plugin loaders), so on `pj` run the one `bind` line by hand, then
-   `tmux -L pj list-keys -T prefix g` prints the `display-popup` form. On the live
-   server, after `tmux source-file ~/.tmux.conf`, `tmux list-keys -T prefix g`
-   prints the same form. That reload is the one live-server write in this plan and
-   is the reload the user runs after any config edit.
+   ```tmux
+   # prefix + g : jump to a pane by TITLE — bound in claude.conf (pane-jump,
+   # tools/). Was an inline command-prompt + choose-tree here until 2026-09-03.
+   ```
 
-4. **Prove the bound key end to end on the throwaway server** (R1, R3, R4, R5).
-   Keys go to the `outer` pane, whose terminal is the `pj` client; `send-keys`
-   into a `pj` pane would bypass the key table (runbook testing note).
+   Check: `tmux source-file ~/.tmux.conf` on the live server, then `tmux
+   list-keys -T prefix g` prints the `display-popup` form. This reload is the one
+   live-server write in the plan and is the reload the user runs after any config
+   edit. Then move the binary aside, re-source, confirm `list-keys` prints the
+   `display-message` stub, move it back, re-source.
 
-   | keys to `outer` | then read | expected |
-   |---|---|---|
-   | `C-b g`, `gamma`, `Enter` | `tmux -L pj display -p '#{pane_id}'` | `%2` |
-   | `C-b g`, `alpha`, `Enter` | same | `%0` |
-   | `C-b g`, `zzz`, `Enter` | same, and `tmux -L pj show-messages \| tail -1` | pane unchanged; last message contains `no pane title matches` |
-   | `C-b g`, `beta`, `Escape` | same | pane unchanged; no new message |
-   | `C-b g`, `Enter` (no typing) | same | `%0`, the first row |
-
-   Between key groups sleep 0.3 s for the popup to open. Check: all five rows
-   observed. Then `tmux -L outer kill-server; tmux -L pj kill-server`.
-
-5. **Update the runbook** (R9, R10). In `runbooks/switch-pane-by-name.md`:
-   - "The short answer" table: the `prefix g` row becomes `bin/pane-jump` (fzf popup
-     over `#{pane_title}`), scope and match column unchanged.
-   - "The recipe": new first subsection "Option C — fzf popup — SHIPPED" with the
-     binding, the script's three entry points, and the exit-code table from the
-     spec. Option A keeps its text, retitled "filtered tree (no helper script,
-     no fzf) — fallback", its `SHIPPED` marker removed. Option B stays as the
-     one-command form the script's `jump` now implements; say so in one line.
-   - "Verify": add a second table with the observed values from steps 2 and 4,
-     dated. Keep the existing table; its measurements still hold for the fallback.
-     Move "the bound key on the real server" out of the `[未驗證]` list only if the
-     user reports pressing it; otherwise it stays listed.
-   - "Troubleshoot": add `**Popup opens and closes at once, status line says fzf not
-     installed**` and `**Enter shows "no pane title matches"**`; the `Down Down`
-     entry moves under a "fallback (Option A)" note.
-   - "Roll back": the shipped key is now `display-popup`; to fall back, paste the
-     Option A binding over it and `source-file`; to drop the key, `unbind g`.
-
-   Check: no executable oracle. The reviewer reads that every claim in the new
-   Verify table matches a step 2 or step 4 row, and that no line says the live
-   key was pressed.
-
-6. **Update `cheat.txt` line 7 and `README.md` line 7** (R9).
+6. **Docs** (R9). No executable oracle; the reviewer reads each against the
+   source.
+   - `runbooks/switch-pane-by-name.md`: "The short answer" table row for `prefix
+     g` → `pane-jump` (C++ popup over `#{pane_title}`); "The recipe" gains
+     "Option C — pane-jump popup — SHIPPED" first, with the binding, the three
+     entry points, the key list; Option A retitled "filtered tree (no binary) —
+     fallback", `SHIPPED` removed; Option B says its jump half is now
+     `pane-jump jump`. New "Install" section with both cmake spellings, copied
+     from `runbooks/sift.md:79`. "Verify": add the harness invocation and the
+     step 3 and step 4 tables with observed values, dated; keep the existing
+     table for the fallback; keep "the bound key on the real server" under
+     `[未驗證]`. "Troubleshoot": add `not built` stub, `no pane title matches`,
+     `no terminal (run it from a tmux popup)`; the `Down Down` entry moves under
+     a fallback note. "Roll back": paste the Option A binding into `tmux.conf`
+     and `source-file`, or `unbind g`.
    - `cheat.txt:7`: `               prefix g        jump to pane by title: list, type, Enter`.
-   - `README.md:7`: ``- [switch-pane-by-name](runbooks/switch-pane-by-name.md) — `prefix g`: fzf popup over `#{pane_title}` — type part of a pane's title, Enter jumps``.
+   - `README.md:7`: ``- [switch-pane-by-name](runbooks/switch-pane-by-name.md) — `prefix g`: pane-jump popup over `#{pane_title}` — type part of a pane's title, Enter jumps``.
+   - `tools/ARCHITECTURE.org`: line 62 "except `sift`" → "except `sift` and
+     `pane-jump`"; Crates table row `| =pane-jump= | popup TUI / =rows= / =jump=
+     seams | ADR-0008 · runbooks/switch-pane-by-name.md |`; Key bindings row
+     `| =prefix g= | popup list of every pane title; type to filter, Enter jumps
+     | pane-jump |`.
+   - `tools/atlas/pane-jump.org`: Summary, Crux (rows → fold → substring →
+     `switch-client`; why the popup stays open on a miss), Links (`sift` for the
+     copied terminal layer, `attention-navigation` for the fzf sibling
+     `cc-fleet`), Sources (`pane-jump/src/main.cpp`), Notes. `index.org`: entry
+     under Subsystems, Coverage counts, the "one non-Rust tool" phrase → two.
+   - `CLAUDE.md`: the crate-count sentence.
+   - `docs/adr/0008-own-the-interaction-loop-for-pane-selection.org`: Context
+     (tmux has no as-you-type pane filter; `choose-tree -f` ignores an empty
+     filter), Decision Drivers, Options (keep `choose-tree`; popup + fzf script;
+     popup + own TUI), Outcome (own TUI, citing 0005 as precedent and the
+     user's directive), Consequences (copied terminal layer, second cmake
+     project).
 
-   Check: `wc -l cheat.txt` prints 60; `sed -n 7p cheat.txt | wc -m` is at most 82
-   (81 cells plus newline); `prefix ?` popup on the live server shows the sheet in
-   one screenful without paging, which the user confirms by eye.
+   Check: `wc -l cheat.txt` prints 60; `sed -n 7p cheat.txt | wc -m` at most 82;
+   every org link in the new atlas node and ADR resolves (`ug -o '\[\[file:[^]]*'`
+   and `test -e` each); the reviewer confirms no doc line claims the live key was
+   pressed.
 
-7. **Review and merge.** Run `/code-review` against `main` per the `implement`
-   body; every finding is addressed or answered in the PR or merge commit. Merge
-   to `main` by fast-forward or merge commit; there is no PR flow in this repo, so
-   the close is `sdlc close pane-name-prompt-hints --merge <sha>`.
+7. **Review and merge.** `/code-review` against `main` per the `implement` body;
+   findings addressed or answered in the merge commit. Merge to `main`; no PR
+   flow, so the close is `sdlc close pane-name-prompt-hints --merge <sha>`.
 
 ## Risks
 
-- **Most likely break: the tab in the `-F` string.** An editor that converts tabs
-  to spaces silently turns four fields into one and `--nth=4` matches nothing.
-  Step 1's `rows` check catches it; keep the file out of any auto-format.
-- **`switch-client` from inside the popup.** The spec relies on `cc-fleet` proving
-  this works from the same position. If it does not on this server, the symptom is
-  exit 0 with no move. Step 4 rows 1 and 2 are the oracle; the fix is
-  `switch-client -c "$(tmux display -p '#{client_name}')" -t "$id"`, the form
-  `focus_pane(Some(client), …)` uses.
-- **`set -e` and fzf's exit 1.** A `$(...)` assignment under `set -e` aborts the
-  script on exit 1 before the `case`. The `|| rc=$?` on the assignment line is
-  what keeps R4's message reachable; a refactor that drops it reintroduces a
-  silent close.
-- **A title containing a tab.** Would shift the title into field 5; not matched.
-  No writer in this repo emits one; accepted, noted in the runbook.
-- **Popup size on a narrow client.** 80 % × 60 % is a percentage; the sheet popup
-  at `tmux.conf:47` avoids percentages for a fixed-column file, but fzf reflows, so
-  percentages are fine here.
-- **`display-message` after the popup closes.** cc-fleet's comment at
-  `tools/cc-fleet/src/main.rs:57` notes the popup closes the instant the program
-  returns, so the message lands on the status line, not in the popup. Expected.
-- **Runbook rewrite scope.** Step 5 edits five sections of a 300-line file; the
-  reviewer diff is the control. Spec concern 4 accepted this.
-- **What was not chosen.** A Rust crate in `tools/` (spec: out of scope), a
-  `plugins/tmux-pane-jump/` loader (spec concern 1: heavier for one script),
-  fuzzy matching (spec concern 3), auto-accept on a unique match (spec: not
-  included), a `--preview` pane (spec: not included).
+- **Most likely break: `switch-client` from inside the popup after
+  `term.restore()`.** `sift` never switches clients; `cc-fleet` does, from Rust,
+  without restoring a raw terminal first. If the move fails the symptom is exit 0
+  and no move; step 3's `jump %1` row and step 4's first row are the oracle. Fix:
+  `switch-client -c "$(display -p '#{client_name}')" -t <id>`, the
+  `focus_pane(Some(client), …)` form.
+- **Copied terminal code drifts from `sift`.** A fix landing in one file and not
+  the other. Mitigation: the header comment names the source lines; spec concern
+  1 names the shared-header follow-up.
+- **Case folding of non-ASCII titles.** `towlower` under the user's locale is not
+  tmux's `mi`. ASCII is exact; Chinese titles have no case, so folding is the
+  identity. Marked `[未驗證]` for other scripts in the runbook.
+- **A title containing a tab.** Shifts fields; no writer in this repo emits one.
+  Accepted, noted in the runbook.
+- **`cargo clean` deletes the binary.** Inherited from `sift`; the stub binding
+  says how to rebuild.
+- **Two cmake projects, one `target/`.** Separate `binaryDir`s prevent cache
+  collision; the `release/` output dir is shared by design. A future
+  `tools/CMakeLists.txt` could unify them; not now.
+- **Popup size on a narrow client.** 80 % × 60 % is a percentage; the TUI reflows
+  on `SIGWINCH`, so percentages are fine.
+- **Runbook rewrite scope.** Step 6 edits six sections of a 300-line file; the
+  reviewer diff is the control. Spec concern 5 accepted this.
+- **What was not chosen.** The bash + fzf script (superseded by directive), a
+  Rust crate on `tmuxlib` (the user asked for C++), a shared C++ header (touches
+  `sift`), fuzzy matching (spec concern 3), auto-accept on a unique match,
+  ordinal mode, a preview pane.
 
 ## Proof
 
-- **Static**: `bash -n bin/pane-jump` exit 0; `shellcheck` clean or reported
-  skipped; `git diff --stat main` lists exactly the five paths in Files that
-  change plus `plan.md` if it was amended.
-- **Halves** (step 2): the seven-row table, every row observed, recorded in the
-  runbook Verify section with the date.
-- **Whole** (step 4): the five-row keystroke table on the nested server, every
-  row observed, recorded likewise.
-- **Live** (step 3, step 6): `tmux list-keys -T prefix g` on the live server
-  prints the `display-popup` binding after `source-file`; `cheat.txt` stays 60
-  lines and line 7 within 81 cells. The live keypress itself is the user's and
-  stays `[未驗證]` in the runbook until they report it.
-- **Spec trace**: R1, R3, R5 by step 4; R2, R4, R7 by step 2; R6 by
-  `ug -c 'select-pane -T' bin/pane-jump` printing 0; R8 by step 3; R9 by step 6
-  and the step 5 diff; R10 by steps 2 and 4 having run on `-L pj` / `-L outer`
-  only.
+- **Static**: the release build compiles with zero warnings under the inherited
+  flag set; the three `ug` counts in step 2 (all `display-message` carry `-l`; no
+  `system` / `popen` / `select-pane` / `rename-window`); `git diff --stat main`
+  lists exactly the paths in Files that change, plus `plan.md` if amended.
+- **Headless** (step 3): `verify-pane-jump.sh` exits 0, nine assertions `ok`,
+  output pasted into the runbook Verify section with the date.
+- **Whole** (step 4): the five keystroke rows on the nested servers, observed
+  values recorded likewise.
+- **Live** (step 5, step 6): `tmux list-keys -T prefix g` prints the popup form
+  after `source-file`, and the stub form with the binary moved aside;
+  `cheat.txt` stays 60 lines, line 7 within 81 cells. The live keypress is the
+  user's and stays `[未驗證]` until they report it.
+- **Sanitizer**: `cmake --preset asan && cmake --build --preset asan` from
+  `tools/pane-jump`, then `PANE_JUMP=…/pane-jump-asan bash verify-pane-jump.sh`
+  exits 0, the same discipline `runbooks/sift.md:136` records.
+- **Spec trace**: R1, R3, R5 by step 4; R2, R4 by step 3 and step 4; R6 by the
+  step 2 counts; R7 by the stub check in step 5; R8 by step 5; R9 by step 6; R10
+  by steps 3 and 4 having run on `-L pj_verify` / `-L pj_outer` only.
