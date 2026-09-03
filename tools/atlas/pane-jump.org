@@ -1,0 +1,84 @@
+#+TITLE: pane-jump
+#+ATLAS_TYPE: subsystem
+#+ATLAS_ID: pane-jump
+#+ATLAS_GENERATOR: atlas/1
+
+* Summary
+
+=pane-jump= is the popup pane picker bound to =prefix g=, and the workspace's second non-Rust tool: C++20, one translation unit, cmake, writing its binary into =target/release/= beside the cargo output so =claude.conf= keeps one path shape for every tool. It answers "take me to the pane called X" for *any* pane, which nothing else here does — cc-fleet's picker lists Claude panes only, and ace-window is positional. tmux cannot do it either: a pane is not a name target at all, and the one builtin that reaches a pane through a format, =choose-tree -f=, opens with the cursor on the session row and *ignores a filter that would leave the list empty*, so a typo showed the whole tree and a blind Enter moved nothing. Both faults are measured in runbooks/switch-pane-by-name.md. So the tool owns the keystroke loop and hands tmux one =switch-client= at the end — the same shape as =sift=, and ADR-0008 is the scope line for it.
+
+The whole tool is four steps: one =list-panes -a -F= call builds the rows, every keystroke folds the query and the titles to lowercase code points, a substring test picks the rows to show, and Enter runs =switch-client -t <pane_id>=. Only the *title* column is matched — location and command are rendered as dim context, so typing =bash= selects nothing rather than every shell — and the query is a plain string, not a regex, which is what the =#{mi:*x*,…}= filter it replaced did. The selection returns to the first row on every query change, so a fragment that narrows the list to one pane needs no arrow key before Enter. A single =switch-client= on a pane id is enough because tmux treats a pane target as a complete address, changing session, window and pane in one call — measured, and it works from inside the popup after the terminal is restored, with no =-c= client argument. tmuxlib's =focus_pane()= (=tmuxlib/src/lib.rs:339-351=), which cc-fleet calls from the same position, takes the long route instead: resolve the pane's session and window, then =switch-client -t <session>=, =select-window=, =select-pane=.
+
+Titles are read and never written. That is not a style choice: cc-attend, cc-fleet and =talk ping= classify a pane from =#{pane_title}= when no =@claude_state= is stamped, so a picker that renamed panes to make them findable would drop them out of =prefix S= and =prefix N=. The file therefore issues no title-setting and no window-renaming command at all, and the proof is a grep rather than a reading — which is why its header comment deliberately does not spell out the command names it forbids.
+
+Titles are also untrusted text, and the format-context obligation is discharged the way =seek= and =sift= discharge it: tmux is spawned only through =execvp= with an argv vector, never a shell string, so a title full of shell metacharacters is inert; no pane option is stamped, so nothing re-enters a tmux format context; and the file's single =display-message= helper is literal (=-l=). Titles reach exactly two places, this popup's own rendering and the =rows= stdout.
+
+Three entry points keep both halves testable without a TUI, the seam =sift rows= and =cc-fleet rows= already use: =pane-jump= (the bound popup), =pane-jump rows [fragment]= (one tab-separated line per pane: id, location, command, title), =pane-jump jump <pane_id>= (the guarded switch). =verify-pane-jump.sh= pins all of it — 28 assertions, the first five groups over those seams and the last three driving the shipped binding with real keystrokes on a nested pair of throwaway servers, because =send-keys= into a pane bypasses the key table and a prefix binding can only be reached through the attached client's terminal.
+
+* Crux
+
+Rows come from one tmux call whose format string is a compile-time constant, and the scope =-a= is the whole server — every pane, every session, which is what the replaced binding covered:
+
+#+begin_src cpp :file pane-jump/src/main.cpp :lines 289-293
+// One tmux call, argv vector, never a shell string. Scope is `-a`: every pane on
+// the server, in every session, which is the scope the replaced binding had.
+constexpr std::string_view kRowFormat =
+    "#{pane_id}\t#{session_name}:#{window_index}.#{pane_index}\t"
+    "#{pane_current_command}\t#{pane_title}";
+#+end_src
+
+The match is the middle of the chain: both sides are decoded to code points and folded with =towlower= under the user's locale, then compared as sequences. ASCII behaves exactly as tmux's =#{mi:}= did; for non-ASCII the fold is best effort and agreement with =mi= is [未驗證]. The empty needle matching everything is what makes the list open complete and narrow as characters arrive:
+
+#+begin_src cpp :file pane-jump/src/main.cpp :lines 342-356
+[[nodiscard]] std::u32string fold(std::string_view s) {
+    std::u32string out;
+    for (size_t i = 0; i < s.size();) {
+        const auto d = utf8_decode(s, i);
+        out.push_back(static_cast<char32_t>(towlower(static_cast<wint_t>(d.cp))));
+        i += static_cast<size_t>(d.len);
+    }
+    return out;
+}
+
+// An empty needle matches every row: the list opens complete (R1) and narrows
+// as characters arrive.
+[[nodiscard]] bool title_matches(const Row& r, const std::u32string& needle) {
+    return fold(r.title).find(needle) != std::u32string::npos;
+}
+#+end_src
+
+Enter is where the two failure modes are decided. On zero rows it sets a notice and breaks back into the loop instead of returning: the popup stays open so the query can be corrected, and the alternative — closing, or falling back to the full list — is exactly the =choose-tree= behaviour the tool exists to replace. On a real row the terminal is restored *before* the client is switched, because after the switch this popup's client is looking at another pane:
+
+#+begin_src cpp :file pane-jump/src/main.cpp :lines 670-681
+            case Key::Enter: {
+                if (u.shown.empty()) {
+                    // Fail closed (R4): no full list, no silent success, and the
+                    // popup stays open so the query can be corrected.
+                    u.notice = "pane-jump: no pane title matches";
+                    break;
+                }
+                const std::string id = u.rows[u.shown[u.sel]].id;
+                term.restore();               // before the client moves elsewhere
+                jump(id);
+                return 0;
+            }
+#+end_src
+
+=jump()= itself is eight lines (=main.cpp:637-644=) and exists for its guard: =tmux switch-client -t ""= exits 0 and moves nothing, so an empty id would be a silent success. It is refused and reported instead, on stderr for the =jump= seam and on the status line for a human.
+
+Every path returns 0 — the miss, the empty id, the usage error (=main.cpp:753=, =main.cpp:767=). A non-zero exit from a key binding surfaces as a tmux error popup (ARCHITECTURE.org), so exit status carries no information here and is not an oracle: =verify-pane-jump.sh= asserts on the active pane id and on captured popup text instead.
+
+* Links
+
+- implements :: [[file:../../docs/adr/0008-own-the-interaction-loop-for-pane-selection.org][ADR-0008: own the interaction loop for selecting a pane by title]] — the decision this binary carries out, and its scope line: owning a keystroke loop is justified for pane selection because tmux has no as-you-type filter and =choose-tree -f= drops an empty filter, not as a general licence
+- depends_on :: [[file:sift.org][sift]] — the terminal layer (=Fd=, =RawMode=, =read_key=, the =constexpr= UTF-8 decoder with its =static_assert= tests, the =execvp= tmux spawn, the =-l= message helper) is a *copy* of sift's, not a shared header, so a fix to either belongs in both; the copy already diverges — this decoder accepts =ESC [ 1 ~= / =ESC [ 4 ~= for Home/End and consumes the trailing =~=, which is the known defect sift still has
+- implements :: [[file:attention-navigation.org][attention navigation]] — honours the contract those pickers cannot enforce: they fall back to reading =#{pane_title}= to classify a pane, so this tool reads titles and writes none; its Enter is also the same switch-client-from-inside-a-popup that cc-fleet performs, which is where that behaviour was first depended on
+
+* Sources
+:SOURCES:
+:pane-jump/src/main.cpp: sha256:4996f7a0c128e95cdaf3a6e79eb06804918a7955c9b7c7d7d0abee899a5d5834
+:pane-jump/verify-pane-jump.sh: sha256:9162eaa50e319e1fd28d7e22a533936b70d081f3d3a7e845cbe86404ffce3dfe
+:pane-jump/CMakeLists.txt: sha256:acd5bd08e28e4079b2a56a8f3280e70beec6d54f409600e4b6ffb6599143f3c8
+:END:
+
+* Notes

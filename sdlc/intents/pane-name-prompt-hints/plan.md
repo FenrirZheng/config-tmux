@@ -278,3 +278,33 @@ the repo's `<area>: <verb> <thing>` style (`tools: add pane-jump …`,
 - **Spec trace**: R1, R3, R5 by step 4; R2, R4 by step 3 and step 4; R6 by the
   step 2 counts; R7 by the stub check in step 5; R8 by step 5; R9 by step 6; R10
   by steps 3 and 4 having run on `-L pj_verify` / `-L pj_outer` only.
+
+## Departures during build
+
+Recorded per the Build play, step 7: each departure names the commit it landed in.
+
+- `3d97246` — `read_key` decodes `ESC [ 1 ~` / `ESC [ 4 ~` (Home / End) and
+  consumes the trailing `~` of numeric CSI sequences, wider than sift's copy,
+  because sift's version has a documented `~` leak and the spec lists Home / End
+  as working keys. sift itself is untouched.
+- `3d97246` — the popup has a one-line key-hint footer; the spec described the
+  header and rows only. Cost: one list row.
+- `3d97246` — `draw` takes `Ui&`, not `const Ui&`, because it keeps the scroll
+  offset in view, as sift's does.
+- `3d97246` — `jump("")` reports on stderr and through `display-message -l`; the
+  spec table said stderr, the plan's signature comment said `say`.
+- `3d97246` — the header comment does not spell out the two forbidden title-writing
+  commands, so the step 2 `ug` count is 0 on code and comments alike.
+- `b26f8cf` — the R5 silent-cancel assertion counts ` message: ` lines from
+  `show-messages`, with a positive control, because on 3.5a `show-messages` logs
+  every server command and a line count is not an oracle. The step 4 keystroke
+  rows live in the harness as its second block, each starting from a pane that
+  differs from its expected landing.
+- docs commit — atlas Coverage reads `9 nodes over 19 source files`, not `17`:
+  the existing drawers hold 17 unique paths of which one is a doc, and the new node
+  lists three sources. The atlas Links section carries one edge to a non-node
+  file (ADR-0008); the node format writes node-to-node edges, so this is a format
+  extension to accept or move to prose.
+- docs commit — Option A's opening sentence and the "was free" sentence in the
+  runbook changed, because the `tmux.conf` binding they described no longer exists.
+- Not done, by design: the live keypress. It stays `[未驗證]` in the runbook.

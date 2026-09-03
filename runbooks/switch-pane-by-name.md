@@ -1,9 +1,10 @@
 # Runbook: switch to a pane by typing its name
 
 How to reach a pane by typing part of its **title** instead of its position.
-Shipped as `prefix g` since 2026-09-03 ([`tmux.conf`](../tmux.conf), Option A
-below); this runbook records what else exists, what tmux can and cannot do, and
-how the key was built. Measured against tmux 3.5a (`tmux -V`) on 2026-09-03.
+Shipped as `prefix g` since 2026-09-03: the `pane-jump` popup, Option C below,
+bound in [`claude.conf`](../claude.conf) where every `tools/` binary key lives.
+This runbook records what else exists, what tmux can and cannot do, and how the
+key was built. Measured against tmux 3.5a (`tmux -V`) on 2026-09-03.
 
 Related: [`seek`](seek.md), [`sift`](sift.md) search *inside* a pane; this is
 about choosing *which* pane.
@@ -20,7 +21,7 @@ Three things do that here. The first two are not general:
 |---|---|---|---|
 | [cc-fleet](../tools/cc-fleet/src/main.rs) | `prefix S` | **Claude panes only** | `@claude_task`, else `#{pane_title}` |
 | [ace-window](../plugins/tmux-ace-window) | `prefix o` / `O` | current window only | nothing — positional letters |
-| filtered `choose-tree` ([`tmux.conf`](../tmux.conf)) | `prefix g` | **every pane, every session** | `#{pane_title}`, case-insensitive |
+| [pane-jump](../tools/pane-jump/src/main.cpp), a C++ popup bound in [`claude.conf`](../claude.conf) | `prefix g` | **every pane, every session** | `#{pane_title}`, case-insensitive substring |
 
 If the pane you want is a Claude pane, **`prefix S` is already the answer** and
 the rest of this runbook is not needed. fzf filters as you type over a column
@@ -149,11 +150,94 @@ That last sentence is a trap; see Troubleshoot.
 
 ## The recipe
 
-### Option A — filtered tree (interactive, no helper script) — SHIPPED
+### Option C — pane-jump popup — SHIPPED
 
-Bound in [`tmux.conf`](../tmux.conf), next to the ace-window block — it is plain
-tmux with no binary behind it, so it does not belong in `claude.conf` with the
-tool keys. After an edit, `tmux source-file ~/.tmux.conf`:
+[`tools/pane-jump/src/main.cpp`](../tools/pane-jump/src/main.cpp): C++20, one
+translation unit, nothing beyond libc and tmux. It lists every pane on the
+server, narrows the list on every keystroke against `#{pane_title}` only, and
+`Enter` runs one `switch-client` on the highlighted pane id. It exists because
+no tmux command filters a list as you type, and because `choose-tree -f` fails
+in the two ways measured below: the cursor opens on the session row, and a
+filter that would leave the list empty is ignored — see
+[ADR-0008](../docs/adr/0008-own-the-interaction-loop-for-pane-selection.org).
+
+Bound in [`claude.conf`](../claude.conf) behind the same load-time guard as
+`sift`, so an unbuilt binary prints a build command instead of failing silently:
+
+```tmux
+if-shell '[ -x ~/.tmux/tools/target/release/pane-jump ]' {
+  bind -T prefix g display-popup -E -w 80% -h 60% -T ' pane name ' \
+    "~/.tmux/tools/target/release/pane-jump"
+} {
+  bind -T prefix g display-message -l 'pane-jump: not built — cd ~/.tmux/tools && cmake -S pane-jump -B target/cmake-build-pane-jump -DCMAKE_BUILD_TYPE=Release && cmake --build target/cmake-build-pane-jump && tmux source-file ~/.tmux.conf'
+}
+```
+
+The binding passes **no argument** on purpose: `display-popup` does not
+format-expand its shell-command, so a `#{pane_id}` written there would be handed
+over as literal characters. `pane-jump` asks tmux for the pane list itself.
+
+Three entry points, so both halves are testable without a TUI — the same seam
+`sift rows` and `cc-fleet rows` use:
+
+| invocation | does | exit |
+|---|---|---|
+| `pane-jump` | rows → popup → jump; the bound form | 0 |
+| `pane-jump rows [<fragment>]` | prints the rows, tab-separated: `pane_id`, `session:window.pane`, command, title; with a fragment, only the rows the popup would show | 0 |
+| `pane-jump jump <pane_id>` | the guarded `switch-client`; an empty id prints `pane-jump: no pane selected` on stderr and calls nothing | 0 |
+
+**Every invocation exits 0** — a miss, an empty id and a usage error included.
+A non-zero exit from a key binding surfaces as a tmux error popup
+([`tools/ARCHITECTURE.org`](../tools/ARCHITECTURE.org)), so exit status is not
+an oracle for this tool: the harness below asserts on the active pane and on the
+popup's own text instead.
+
+Keys inside the popup:
+
+| key | does |
+|---|---|
+| any printable character | appends to the query; the list refilters and the selection returns to the first row |
+| `Backspace` / `C-w` / `C-u` | deletes one character / one word / the whole query |
+| `↑` `↓`, `C-p` `C-n` | moves the selection |
+| `PgUp` / `PgDn`, `Home` / `End` | pages, first row, last row |
+| `Enter` | `switch-client` to the highlighted pane — session, window and pane in one call |
+| `Esc`, `C-c`, `C-g` | closes the popup, moves nothing, prints nothing |
+
+Because the selection returns to the first row on every query change, a fragment
+that narrows the list to one pane needs no `Down` before `Enter`. On zero
+matches `Enter` moves nothing and the header reads `pane-jump: no pane title
+matches`; the popup stays open so the query can be corrected, and the full tree
+is never shown — that is the `choose-tree` behaviour this replaced.
+
+The frame with nothing typed, captured 2026-09-03 from the three-pane throwaway
+server the harness builds (blank rows between the list and the footer elided):
+
+```
+┌─ pane name ──────────────────────────────────────────────────────────────────┐
+│pane name:                                                                 3/3│
+│> t:0.0 bash       alpha-build                                                │
+│  t:0.1 bash       beta-server                                                │
+│  t:0.2 bash       gamma-notes                                                │
+│type to filter titles  ↑↓ select  Enter jump  Esc cancel  C-w word  C-u clear │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+The location and command columns are shown but not matched (typing `bash` finds
+nothing), and the command column is a fixed width so the title column does not
+jitter as the filter changes. Rows are cut at a cell boundary, so a CJK title
+does not straddle the popup edge — captured with a `中文筆記-gamma` title on the
+same server, 2026-09-03. The fold is `towlower` per code point under the user's
+locale: ASCII behaves exactly as the `#{mi:}` rule below, and for non-ASCII it
+is best effort, `[未驗證]` against tmux's own `mi`.
+
+Build it before the key works — see [Install](#install).
+
+### Option A — filtered tree (no binary) — fallback
+
+Plain tmux, no binary behind it: the shape to fall back on when `pane-jump` is
+not built, or on a machine where the toolset is not installed. It is not bound
+today; paste it into [`tmux.conf`](../tmux.conf) and
+`tmux source-file ~/.tmux.conf`:
 
 ```tmux
 bind -T prefix g command-prompt -p "pane name:" \
@@ -162,8 +246,8 @@ bind -T prefix g command-prompt -p "pane name:" \
 
 `#{mi:}` not `#{m:}` — `mi` is the case-insensitive form. `%%` is
 `command-prompt`'s substitution of what you typed. `prefix g` was **free**
-before this binding took it (checked with `tmux list-keys -T prefix`; still free
-are `G`, `F`, `j`, `J`).
+until 2026-09-03, when it was first bound (checked with
+`tmux list-keys -T prefix`; still free are `G`, `F`, `j`, `J`).
 
 Type `prefix g`, a fragment of the title, `Enter`. The tree opens showing only
 matching panes plus their parent session and window rows.
@@ -196,8 +280,19 @@ Binding this needs a helper script rather than an inline `run-shell`: the
 filter contains `#{...}`, `%%`, single quotes and a command substitution, and
 nesting those inside a tmux string is where it breaks. **Guard the empty
 case** — `switch-client -t ""` exits **0** and does nothing, so an unguarded
-version reports success on a typo. Fail closed: if the id is empty, print a
-message and exit non-zero.
+version reports success on a typo.
+
+The jump half of this option is now `pane-jump jump <pane_id>`, which carries
+that guard: an empty or missing id prints `pane-jump: no pane selected` on
+stderr and on the status line, calls no tmux command, and still exits 0 (the
+key-binding invariant above). The composition is one line — the id is an
+argument, not stdin:
+
+```bash
+pane-jump jump "$(tmux list-panes -a -f '#{mi:*beta*,#{pane_title}}' -F '#{pane_id}' | head -1)"
+```
+
+Nothing binds it: Option C covers the same ground and shows the list.
 
 ### Naming a non-Claude pane
 
@@ -208,7 +303,105 @@ tmux select-pane -t %12 -T 'db-tail'
 Persists for the life of the pane unless the program inside sets its own title.
 Never do this to a pane running `claude` — see "Do not write pane titles".
 
+## Install
+
+`pane-jump` is C++ and does **not** build with `cargo`:
+
+```bash
+cd ~/.tmux/tools/pane-jump
+cmake --preset release && cmake --build --preset release
+tmux source-file ~/.tmux.conf     # required — the binding's guard is load-time
+```
+
+[`CMakePresets.json`](../tools/pane-jump/CMakePresets.json) pins the Ninja
+generator and the build directory. Without `ninja`, or on cmake < 3.21, the
+generator-less form builds the identical binary:
+
+```bash
+cd ~/.tmux/tools
+cmake -S pane-jump -B target/cmake-build-pane-jump -DCMAKE_BUILD_TYPE=Release
+cmake --build target/cmake-build-pane-jump
+```
+
+Both spellings write to the same build directory,
+`tools/target/cmake-build-pane-jump`, and they produce the same binary — the two
+were run back to back on 2026-09-03 and the output hashed to the same sha256.
+But **cmake refuses to change generator in an existing tree**: running the
+preset over a tree configured by the generator-less form stops with
+
+```
+Either remove the CMakeCache.txt file and CMakeFiles directory
+or choose a different binary directory.
+```
+
+so switching spellings needs `rm -rf tools/target/cmake-build-pane-jump` first.
+Same arrangement, and same hazard, as [`sift`](sift.md).
+
+Needs a C++20 compiler (g++ ≥ 10) and cmake; no ncurses, no external libraries.
+Two consequences of the output landing in `tools/target/release/` next to the
+cargo binaries, both inherited from `sift`:
+
+- **`cargo clean` deletes it.** Re-run the `cmake --build` line, not just
+  `cargo build --release`.
+- The cmake build tree is under `tools/target/` too, which
+  [`tools/.gitignore`](../tools/.gitignore) already covers — no ignore rule to
+  add.
+
 ## Verify
+
+### The shipped key: pane-jump
+
+```bash
+bash ~/.tmux/tools/pane-jump/verify-pane-jump.sh
+```
+
+[`verify-pane-jump.sh`](../tools/pane-jump/verify-pane-jump.sh) is 28 assertions
+on two throwaway servers — `-L pj_verify` holding three panes titled
+`alpha-build`, `beta-server`, `gamma-notes`, and `-L pj_outer` holding the
+client attached to it, because keys for a prefix binding must arrive at the
+attached client's terminal (see the testing note below). Its first assertion is
+the control that `$TMUX` points at the throwaway socket, without which every
+assertion would be measuring the user's real server. Run 2026-09-03:
+
+```
+passed 28, failed 0
+```
+
+exit 0, and the release build compiles with 0 warnings under `sift`'s flag set
+(`-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion
+-Wold-style-cast -Wnon-virtual-dtor`).
+
+**That the checker can fail** was shown the same day: pointed at a do-nothing
+stub, it reports `passed 12, failed 16` and exits 1.
+
+```bash
+PANE_JUMP=/path/to/a/stub/that/does/nothing bash ~/.tmux/tools/pane-jump/verify-pane-jump.sh
+```
+
+The keystrokes it drives through `prefix g` on those nested servers, and what
+each was observed to do (2026-09-03):
+
+| keys | result |
+|---|---|
+| `C-b g`, `gamma`, `Enter` | active pane became `%2` (`gamma-notes`) |
+| `C-b g`, `alpha`, `Enter` | active pane became `%0` (`alpha-build`) |
+| `C-b g`, `Enter` with nothing typed | active pane became `%0` — the first row |
+| `C-b g`, `zzz`, `Enter` | popup stays open, header reads `pane-jump: no pane title matches`, nothing moved; `Escape` then closes it |
+| `C-b g`, `beta`, `Escape` | nothing moved, and no message logged |
+| `pane-jump jump ''` and `pane-jump jump` with no id | `no pane selected` on stderr, exit 0, nothing moved |
+
+The silent-cancel row needs its own oracle: `show-messages` on 3.5a logs every
+command the server ran, so the log grows whether or not anything was printed.
+A `display-message -l` from the tool logs one ` message: ` line, so the harness
+counts those and not the log's length — with a positive control asserting that
+a message the tool *does* print moves the same counter.
+
+One behaviour worth naming because it was the plan's most likely break: a plain
+`switch-client -t <pane_id>` issued from inside the popup, after the terminal
+has been restored, moves the client that opened the popup. No `-c` argument was
+needed.
+
+### The fallback, and what tmux does natively
 
 Everything below was run on a throwaway server (`tmux -L pbnprobe -f /dev/null`)
 with three panes titled `alpha-build`, `beta-server`, `gamma-notes`, plus a
@@ -247,11 +440,18 @@ Results, all observed:
 
 Not verified [未驗證]:
 
-- The bound key exercised interactively on the **real** server. The line is now
-  installed in [`tmux.conf`](../tmux.conf) and `tmux list-keys -T prefix g`
-  prints it after `source-file` (checked 2026-09-03), but a keypress cannot be
-  delivered from a script — see the testing note above. The behaviour was
-  exercised verbatim on the throwaway server.
+- **The bound key pressed on the user's live server.** The block is installed in
+  [`claude.conf`](../claude.conf), and the binding step recorded that
+  `tmux list-keys -T prefix g` prints the `display-popup` form there after
+  `source-file` (2026-09-03; not re-run when this section was written). A
+  keypress cannot be delivered to that client from a script — see the testing
+  note above.
+  The same binding line, and the keystrokes above, were exercised verbatim on
+  the throwaway servers.
+- Non-ASCII case folding against tmux's own `#{mi:}`. `pane-jump` folds with
+  `towlower` per code point; that it agrees with `mi` for non-ASCII input was
+  not measured. CJK titles were only checked for rendering, where they were
+  observed to stay inside the popup edge.
 - `talk-fleet role set` / `resolve` end to end — source read, not run.
 - Option B as a bound key. Its two halves were each measured; the helper script
   that joins them was not written.
@@ -262,6 +462,40 @@ must be delivered to the terminal of the attached client, which is why the
 verification used a nested server and sent keys to the *outer* pane.
 
 ## Troubleshoot
+
+**`prefix g` prints `pane-jump: not built`** — the guard is evaluated when the
+config is *loaded*, so building the binary is not enough: run
+`tmux source-file ~/.tmux.conf`. If the message survives that, the binary really
+is missing — see [Install](#install). Check which form is bound with:
+
+```bash
+tmux list-keys -T prefix | grep -E '^bind-key +-T prefix +g'
+```
+
+It should end in `.../release/pane-jump` with nothing after it.
+
+**The popup header says `pane-jump: no pane title matches`** — zero rows matched
+the query, and `Enter` therefore moved nothing. Only the **title** column is
+matched, so typing a command name such as `bash` matches nothing by design. Read
+the titles you are matching against:
+
+```bash
+tmux list-panes -a -F '#{pane_id} [#{pane_title}]'
+```
+
+Correct the query in place — the popup is still open — or `Esc` out.
+
+**`pane-jump: no terminal (run it from a tmux popup)`** — the binary was started
+without a terminal on stdin: from a script, a pipeline, or a `run-shell`. The
+popup needs a tty; the two headless seams do not, so use `pane-jump rows` and
+`pane-jump jump <pane_id>` there. It still exits 0 (measured 2026-09-03), and
+if the server has **no attached client at all** the message cannot be delivered
+either — tmux answers the `display-message` with `no current client` and the run
+is silent. Look in `tmux show-messages` when a scripted run appears to do
+nothing.
+
+The next two entries are about the **Option A fallback**; `pane-jump` has
+neither failure mode.
 
 **Typing a name shows every pane instead of one** — the filter matched nothing,
 and `man tmux` says a filter leading to an empty list "is ignored". A full tree
@@ -291,7 +525,8 @@ the next hook to stamp `@claude_state`.
 resolution step found no pane and the empty string was passed through. Guard it.
 
 **A name matches two panes** — `list-panes -f | head -1` picks arbitrarily
-(source order, not relevance). Use Option A, which shows you both.
+(source order, not relevance). Use Option C, which keeps every match on screen
+and lets you pick one.
 
 **`prefix f` (`find-window`) does not find my pane title** — by design. It
 searches window names, window titles and visible content, and selects a window.
@@ -299,12 +534,28 @@ searches window names, window titles and visible content, and selects a window.
 
 ## Roll back
 
-Option A ships. To drop it, delete the `bind -T prefix g` line from
-[`tmux.conf`](../tmux.conf) and run `tmux source-file ~/.tmux.conf`.
+Option C ships. To drop it, delete the `prefix g` `if-shell` block from
+[`claude.conf`](../claude.conf), then choose one of two endings.
 
-Note that `source-file` does **not** remove a stale binding from a running
-server — you must `unbind g` explicitly, the same hazard recorded at
-[`tmux.conf:18-23`](../tmux.conf) and in [seek.md](seek.md).
+To fall back to the filtered tree, paste the Option A binding into
+[`tmux.conf`](../tmux.conf):
+
+```tmux
+bind -T prefix g command-prompt -p "pane name:" \
+  "choose-tree -Z -f '#{mi:*%%*,#{pane_title}}'"
+```
+
+and run `tmux source-file ~/.tmux.conf`. A *rebind* does replace the popup
+binding on a running server.
+
+To leave the key unbound, run `tmux unbind g` on the running server. This one is
+not optional: `source-file` does **not** remove a stale binding, so deleting the
+block alone leaves `prefix g` still opening the popup until the server restarts
+— the same hazard recorded at [`tmux.conf:18-23`](../tmux.conf) and in
+[seek.md](seek.md).
+
+Deleting `tools/pane-jump/` and its binary is safe; nothing else in the repo
+reads them.
 
 Titles set by hand with `select-pane -T` persist for the life of the pane; kill
 the pane or let the program overwrite the title.
