@@ -235,8 +235,9 @@ Build it before the key works — see [Install](#install).
 ### Option A — filtered tree (no binary) — fallback
 
 Plain tmux, no binary behind it: the shape to fall back on when `pane-jump` is
-not built, or on a machine where the toolset is not installed. It is not bound
-today; paste it into [`tmux.conf`](../tmux.conf) and
+not built, or on a machine where the toolset is not installed. The tracked config no
+longer carries it (a live server keeps whatever binding it last sourced until it
+is re-sourced); paste it into [`tmux.conf`](../tmux.conf) and
 `tmux source-file ~/.tmux.conf`:
 
 ```tmux
@@ -324,10 +325,29 @@ cmake --build target/cmake-build-pane-jump
 ```
 
 Both spellings write to the same build directory,
-`tools/target/cmake-build-pane-jump`, and they produce the same binary — the two
-were run back to back on 2026-09-03 and the output hashed to the same sha256.
-But **cmake refuses to change generator in an existing tree**: running the
-preset over a tree configured by the generator-less form stops with
+`tools/target/cmake-build-pane-jump`, and they produce the same binary. Measured
+2026-09-03, each into a freshly removed build tree
+(`rm -rf tools/target/cmake-build-pane-jump tools/target/release/pane-jump`
+before each), from `~/.tmux/tools`:
+
+```
+cmake -S pane-jump -B target/cmake-build-pane-jump -DCMAKE_BUILD_TYPE=Release && cmake --build target/cmake-build-pane-jump
+cd pane-jump && cmake --preset release && cmake --build --preset release
+```
+
+`sha256sum target/release/pane-jump` printed the same digest after both:
+
+```
+66f4477f72f1b3bbae877302246298789fdc6f42522c234292714e5565678199
+```
+
+The claim is that the two spellings agree, not that this digest is fixed: it is
+the binary built from the source as reviewed, with g++ 14.2.0 and cmake 3.31.6,
+and any source or toolchain change moves it.
+
+They are not interchangeable *in place*, though: **cmake refuses to change
+generator in an existing tree**. Running the preset over a tree configured by
+the generator-less form stops with
 
 ```
 Either remove the CMakeCache.txt file and CMakeFiles directory
@@ -440,14 +460,20 @@ Results, all observed:
 
 Not verified [未驗證]:
 
-- **The bound key pressed on the user's live server.** The block is installed in
-  [`claude.conf`](../claude.conf), and the binding step recorded that
-  `tmux list-keys -T prefix g` prints the `display-popup` form there after
-  `source-file` (2026-09-03; not re-run when this section was written). A
-  keypress cannot be delivered to that client from a script — see the testing
-  note above.
-  The same binding line, and the keystrokes above, were exercised verbatim on
-  the throwaway servers.
+- **Everything about the binding on the user's live server.** Nothing from this
+  work has been merged and the live server has not been re-sourced, so
+  `tmux list-keys -T prefix g` there still prints the old
+  `command-prompt` + `choose-tree` form (read 2026-09-03). Neither the key nor
+  the reload has been exercised on it; a keypress cannot be delivered to that
+  client from a script either — see the testing note above.
+  The binding is verified only on throwaway servers, 2026-09-03: sourcing
+  [`claude.conf`](../claude.conf) on a `-L adrcheck` server took the stub
+  branch (`list-keys` printed the `display-message -l 'pane-jump: not built …'`
+  form, the binary being absent at the guarded path), and a copy of the same
+  file with the `if-shell` guard forced to `true` printed the
+  `display-popup -E … pane-jump` form. The same binding line, and the
+  keystrokes above, were exercised verbatim on the `-L pj_verify` /
+  `-L pj_outer` pair.
 - Non-ASCII case folding against tmux's own `#{mi:}`. `pane-jump` folds with
   `towlower` per code point; that it agrees with `mi` for non-ASCII input was
   not measured. CJK titles were only checked for rendering, where they were

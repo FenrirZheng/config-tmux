@@ -41,7 +41,7 @@
 // with its static_assert tests, RawMode, TermSize / term_size, on_winch, the
 // escape constants and read_byte / read_key are copied from
 // tools/sift/src/main.cpp (lines 74-97, 158-237, 248-324, 516-581, 585-667,
-// 673-684 as of 2026-09-03). Two deliberate differences, both narrower than the
+// 673-684 as of 2026-09-03). Three deliberate differences, all narrower than the
 // original:
 //   * sift's Key::AltDigit (ordinal mode, ADR-0007) is dropped — this list is
 //     short enough that up/down suffice, and the spec leaves ordinals as a
@@ -51,6 +51,12 @@
 //     ESC [ F, which is the known defect recorded in runbooks/sift.md ("Home /
 //     End do nothing, or leak a `~` into the pattern"); fixing it there is a
 //     change to sift and is not part of this one.
+//   * two members of the 158-237 range above are omitted: sift's StringLike
+//     concept with chain() (sift lines 202-214) and parse_fields (sift lines
+//     216-231). chain() builds a `;`-joined tmux command list, and this file
+//     sends one command at a time; parse_fields splits the tab-separated reply
+//     of a multi-field status query, which this file never asks tmux for. So
+//     the copied range is 158-201 and 232-237, not the whole span.
 // A shared header both tools include is the clean form and is named as a
 // follow-up in the spec's flagged concerns; until then, a fix to either copy
 // belongs in both.
@@ -499,8 +505,8 @@ Input read_key() {
 
 // ── rendering ──────────────────────────────────────────────────────────────
 
-// Named once so a stray digit in an escape sequence is a compile error at the
-// definition rather than a scrambled screen at 2am.
+// Named once so a stray digit in an escape sequence is a compile error at this
+// definition rather than a rendering fault visible only when the popup runs.
 constexpr std::string_view kHomeClear = "\x1b[H\x1b[2J";
 constexpr std::string_view kBold      = "\x1b[1m";
 constexpr std::string_view kDim       = "\x1b[2m";
@@ -545,11 +551,15 @@ void refilter(Ui& u) {
 // the filter changes which commands are on screen.
 constexpr int kCmdWidth = 10;
 
+// Rows of the popup that are not pane rows: the header and the key-hint footer.
+// draw() and the PgUp/PgDn step must agree on this number, so it is named once.
+constexpr int kChromeRows = 2;
+
 void draw(Ui& u) {
     const auto [w, h] = term_size();
     if (h < 4 || w < 20) return;
 
-    const int list_rows = std::max(h - 2, 1);    // header + footer
+    const int list_rows = std::max(h - kChromeRows, 1);
 
     // Keep the selection in view.
     if (u.sel < u.top) u.top = u.sel;
@@ -676,7 +686,9 @@ int run_ui() {
                 }
                 const std::string id = u.rows[u.shown[u.sel]].id;
                 term.restore();               // before the client moves elsewhere
-                jump(id);
+                // A failed switch-client would otherwise be a silent no-op: the
+                // popup is already gone and the client is still where it was.
+                if (!jump(id)) say(std::format("pane-jump: switch-client failed for {}", id));
                 return 0;
             }
 
@@ -686,8 +698,11 @@ int run_ui() {
             case Key::End:  if (!u.shown.empty()) u.sel = u.shown.size() - 1; break;
 
             case Key::PgUp: case Key::PgDn: {
-                const auto   sz   = term_size();
-                const size_t step = static_cast<size_t>(sz.h > 4 ? sz.h - 3 : 1);
+                const auto sz = term_size();
+                // One page is the visible pane rows (h - kChromeRows) less one
+                // row kept on screen as context across the jump.
+                const size_t step =
+                    static_cast<size_t>(sz.h > 4 ? sz.h - kChromeRows - 1 : 1);
                 if (in.key == Key::PgUp) u.sel = (u.sel > step) ? u.sel - step : 0;
                 else if (!u.shown.empty()) u.sel = std::min(u.sel + step, u.shown.size() - 1);
                 break;
@@ -749,7 +764,13 @@ int run_rows(std::string_view fragment) {
 }
 
 int run_jump(const char* id) {
-    jump(id ? std::string(id) : std::string());
+    const std::string target = id ? std::string(id) : std::string();
+    // jump() reports the empty-target case itself; anything else that returns
+    // false is a switch-client that failed, and must not pass as a no-op.
+    if (!jump(target) && !target.empty()) {
+        fprintf(stderr, "pane-jump: switch-client failed for %s\n", target.c_str());
+        say(std::format("pane-jump: switch-client failed for {}", target));
+    }
     return 0;                                  // always exit 0 — see invariants
 }
 

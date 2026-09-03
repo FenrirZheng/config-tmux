@@ -113,24 +113,32 @@ screen()  { tmux -L $O capture-pane -p -t "$OP"; }
 # first typed character can be accepted.
 open_popup() { keys C-b g; sleep 0.4; }
 
-# Each row starts from a known, DIFFERENT pane, so "it ended on X" is evidence
-# that the popup moved the client rather than that it was already there.
-tmux -L $V select-pane -t %0; sleep 0.3
-open_popup; keys gamma; keys Enter; sleep 0.5
+# One row of the keystroke table: put the client on a known pane, open the
+# popup through the real prefix key, then send each remaining argument as one
+# key group. Each row starts from a known, DIFFERENT pane, so "it ended on X" is
+# evidence that the popup moved the client rather than that it was already
+# there. The trailing sleep is for switch-client to land before the caller reads
+# the active pane or the screen.
+from_pane_press() {
+  start=$1; shift
+  tmux -L $V select-pane -t "$start"; sleep 0.3
+  open_popup
+  for k in "$@"; do keys "$k"; done
+  sleep 0.5
+}
+
+from_pane_press %0 gamma Enter
 check "prefix g, 'gamma', Enter -> gamma-notes" "%2" "$(active)"
 
-tmux -L $V select-pane -t %1; sleep 0.3
-open_popup; keys alpha; keys Enter; sleep 0.5
+from_pane_press %1 alpha Enter
 check "prefix g, 'alpha', Enter -> alpha-build" "%0" "$(active)"
 
 # Enter with nothing typed takes the FIRST row (R3: the cursor opens there).
-tmux -L $V select-pane -t %2; sleep 0.3
-open_popup; keys Enter; sleep 0.5
+from_pane_press %2 Enter
 check "prefix g, Enter with no typing -> the first row" "%0" "$(active)"
 
 echo "== 7. a miss keeps the popup open and says so (R4) =="
-tmux -L $V select-pane -t %1; sleep 0.3
-open_popup; keys zzz; keys Enter
+from_pane_press %1 zzz Enter
 miss=$(screen)
 contains "the header reports the miss" "no pane title matches" "$miss"
 contains "the popup is still open" "pane name: zzz" "$miss"

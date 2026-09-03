@@ -13,6 +13,12 @@ it: the helper is a C++ binary under `tools/` owning its own TUI, not a bash
 script around fzf. The user chose "Own TUI, no fzf" at the prompt. R4 and R7 and
 the whole Design section changed; R1 to R3, R5, R6, R8 to R10 stand as accepted.
 
+Amended 2026-09-03 after review: R4's channel is the popup's own header, not
+`display-message -l` — the approved plan already specified it that way (step 2:
+"`Enter` with `shown` empty sets `notice = …` and redraws (R4, popup stays
+open)"), so the built code follows the plan and this edit brings R4 into
+agreement with both. Nothing else in R4 changes.
+
 ## Requirements
 
 Numbered so `plan.md` and the review can cite them.
@@ -30,10 +36,12 @@ Numbered so `plan.md` and the review can cite them.
   a fragment that narrows the list to one pane needs no `Down`. This is the intent's
   success criterion: `prefix g`, read, type, `Enter`, target active.
 - R4 **Fail closed on a miss.** With zero matching rows, `Enter` moves nothing and
-  prints `pane-jump: no pane title matches` through `display-message -l`. No full
-  tree, no silent success. Exit status is 0, per the toolset invariant
-  (`tools/ARCHITECTURE.org:139`: a non-zero exit from a key binding surfaces as a
-  tmux error popup). `switch-client` is never called with an empty target.
+  renders `pane-jump: no pane title matches` in the popup's own header, where the
+  match count otherwise sits; the popup stays open, so the query can be corrected
+  without reopening it. No full tree, no silent success. Exit status is 0, per the
+  toolset invariant (`tools/ARCHITECTURE.org:142`: a non-zero exit from a key
+  binding surfaces as a tmux error popup). `switch-client` is never called with an
+  empty target.
 - R5 **Cancel is silent.** `Esc`, `C-c` or `C-g` closes the popup, moves nothing,
   prints nothing.
 - R6 **Titles are read, never written.** The tool contains no `select-pane -T` and

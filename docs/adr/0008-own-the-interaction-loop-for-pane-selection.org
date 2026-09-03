@@ -95,11 +95,19 @@ list half and the move half are asserted headlessly without a terminal.
   first row and resets there whenever the query changes.
 - Good, because =rows= and =jump= are separately testable, so R1 to R4 are
   proven without driving a TUI.
-- Bad, because roughly 250 lines of =sift='s terminal layer (=RawMode=,
-  =read_key=, the UTF-8 cell-width decoder, =tmux_out= / =tmux_run=) are
-  *copied*, not shared. A header both tools include is the clean form and edits
-  =sift=, its ADR and its atlas node in the same change; deferred, and named as
-  a follow-up in the spec's flagged concerns.
+- Bad, because 312 lines of =sift='s terminal layer (=RawMode=, =read_key=,
+  the UTF-8 cell-width decoder, =tmux_out= / =tmux_run=) are *copied*, not
+  shared. That is the exact count of the line ranges
+  =tools/pane-jump/src/main.cpp='s own header names as copied, measured
+  2026-09-03 from the repo root with
+
+  : awk 'NR>=74&&NR<=97 || NR>=158&&NR<=201 || NR>=232&&NR<=237 || NR>=248&&NR<=324 || NR>=516&&NR<=581 || NR>=585&&NR<=667 || NR>=673&&NR<=684' tools/sift/src/main.cpp | wc -l
+
+  (=sift= lines 202-231, =chain()= / =StringLike= and =parse_fields=, sit
+  inside one of those ranges and are *not* copied; the count excludes them.)
+  A header both tools include is the clean form and edits =sift=, its ADR and
+  its atlas node in the same change; deferred, and named as a follow-up in the
+  spec's flagged concerns.
 - Bad, because a fix landing in one copy of that layer and not the other is now
   possible. The mitigation is a header comment in =pane-jump/src/main.cpp=
   naming the source file it was copied from.

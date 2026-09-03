@@ -307,4 +307,39 @@ Recorded per the Build play, step 7: each departure names the commit it landed i
   extension to accept or move to prose.
 - docs commit — Option A's opening sentence and the "was free" sentence in the
   runbook changed, because the `tmux.conf` binding they described no longer exists.
+- `3d97246` — R4's message is rendered in the popup's own header (the `notice`
+  field), not through `display-message -l` as the spec's R4 read. That is what
+  step 2 of this plan specified; the spec has since been amended to match.
+- `3d97246` — an unknown verb prints
+  `usage: pane-jump | pane-jump rows [fragment] | pane-jump jump <pane-id>` to
+  stderr and exits 0; the plan's `main` line said only "dispatch on `argv[1]`".
+- `3d97246` — a server with no panes at all says `pane-jump: no panes` and
+  returns 0. Planned in step 2's `run_ui` sketch, not in the spec's R-list.
+- review commit — silent-failure fix: both callers of `jump()` now read its
+  `bool`; a failed `switch-client` is reported (`run_ui` on the status line,
+  `run_jump` on stderr and the status line), still exit 0.
+- review commit — the source header's provenance list now records that
+  `chain()` / `StringLike` and `parse_fields` (sift lines 202-231) sit inside
+  the named 158-237 range but were *not* copied.
+- review commit — the figurative comment above the escape constants is replaced
+  by a literal statement of the same rule.
+- review commit — the header-plus-footer row budget is one `kChromeRows`
+  constant; `draw()` and the PgUp/PgDn step both derive from it.
+- review commit — `verify-pane-jump.sh` gains a `from_pane_press` helper for the
+  repeated "select a start pane, open the popup, send key groups" shape; still
+  28 assertions, 28 passing.
+- review commit — the atlas node's Summary is cut to six sentences, the surplus
+  moved to its `Notes`; its `implements` edge to ADR-0008 is dropped and the ADR
+  cited in prose instead, because atlas edges are node-to-node.
+- review commit — `tools/atlas/claude-state-protocol.org` is re-verified against
+  the edited `tools/ARCHITECTURE.org` (prose still true) and its Sources hash
+  updated; `tools/atlas/sift.org` no longer calls sift the only non-Rust tool;
+  `index.org` Coverage states the counting convention behind "19 source files".
+- review commit — ADR-0008's "roughly 250 lines" becomes the measured 312, with
+  the counting command; the runbook's Install section prints the actual sha256
+  the two build spellings agree on, with the date and both commands.
+- review commit — the runbook's `[未驗證]` list no longer claims the binding step
+  read `list-keys` on the live server. The live server has not been re-sourced
+  (its `prefix g` still holds the old `choose-tree` form, read 2026-09-03); the
+  binding is verified only on throwaway servers, both branches of the guard.
 - Not done, by design: the live keypress. It stays `[未驗證]` in the runbook.
