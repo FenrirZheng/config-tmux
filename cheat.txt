@@ -11,6 +11,8 @@
                prefix n / p    next / previous        prefix w   pick from tree
 
   COPY & GRAB  prefix [        copy mode (leave with q)
+               prefix PgUp     copy mode + page up in one key; then PgUp / PgDn
+                               or M-v / C-v page, M-< / M-> top / end of history
                prefix Space    seek: search, jump, grab — type any text, Enter,
                                the cursor lands on the match (runbooks/seek.md)
                prefix /        regex search popup — filters as you type, Enter
