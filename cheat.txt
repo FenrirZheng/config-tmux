@@ -30,6 +30,7 @@
                prefix B        bounce back where you came from
                prefix S        fleet picker: any Claude, any session + preview
                prefix W        live ticker of this pane's Claude tool calls
+               prefix i        prompt coach: fix your English, then paste here
                prefix T        tape: record this pane past alt-screen (●REC)
                prefix M-s      snapshot the layout (restore: cc-layout restore)
 
