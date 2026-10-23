@@ -18,7 +18,8 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.75"
+# 1.88: ratatui 0.30's own rust-version (was 1.75 before win-order).
+rust-version = "1.88"
 
 [workspace.dependencies]
 tmuxlib = { path = "tmuxlib" }
@@ -26,10 +27,9 @@ serde_json = "1"
 # seek maps `copy_cursor_x` (a terminal *cell* column) onto a char index; a CJK
 # character occupies two cells, so the mapping needs a real width table.
 unicode-width = "0.2"
-# win-order's popup list and key loop (crossterm backend). ratatui pins
-# unicode-width =0.2.0 (0.30 too), which holds seek on 0.2.0 instead of 0.2.2;
-# 0.30 also needs rust 1.88, above this workspace's rust-version.
-ratatui = "0.29"
+# win-order's popup list and key loop (crossterm backend). Not 0.29: it pins
+# unicode-width =0.2.0, which would drag seek's copy down from 0.2.2.
+ratatui = "0.30"
 
 [profile.release]
 opt-level = "s"
