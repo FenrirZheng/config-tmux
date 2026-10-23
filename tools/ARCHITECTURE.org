@@ -92,6 +92,7 @@ through =execvp= with an argv vector, never a shell string.
 | =seek=        | =word= / =line=, each with =--claude=          | [[../records/2026-08-09-1116-tmux-seek][records/2026-08-09-1116-tmux-seek]]    |
 | =sift=        | =<pane>= popup TUI / =rows= headless seam      | [[../docs/adr/0005-own-the-interaction-loop-for-regex-search.org][ADR-0005]] · [[../records/2026-08-27-2240-tmux-sift][records/2026-08-27-2240-tmux-sift]] |
 | =pane-jump=   | popup TUI / =rows= / =jump= seams              | [[../docs/adr/0008-own-the-interaction-loop-for-pane-selection.org][ADR-0008]] · [[../runbooks/switch-pane-by-name.md][runbooks/switch-pane-by-name.md]] |
+| =win-order=   | =prefix A= ratatui popup — reorder this session's windows | — (=win-order/src/main.rs= header)                                  |
 
 =seek= is the one crate whose design doc is not a file in [[../plans/][=plans/=]]: its specification is the wayfinder records directory above — read that map's *Current contract* section, which supersedes the tickets under it.
 
@@ -134,6 +135,7 @@ Anything derived from tool arguments passes through =sanitize_format()= before b
 | =prefix Space=         | copy-mode + incremental search prompt (pure tmux, no binary)          | seek      |
 | =prefix /=             | popup regex search over the scrollback; Enter seats the cursor        | sift      |
 | =prefix g=             | popup list of every pane title; type to filter, Enter jumps           | pane-jump |
+| =prefix A=             | popup list of this session's windows; J/K reorder, Enter applies      | win-order |
 | copy-mode =w= / =W=    | grab the token under the cursor → clipboard+buffer / +Claude          | seek      |
 | copy-mode =l= / =L=    | grab the logical line under the cursor → clipboard+buffer / +Claude   | seek      |
 

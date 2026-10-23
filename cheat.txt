@@ -9,6 +9,7 @@
 
   WINDOWS      prefix c        new                    prefix ,   rename
                prefix n / p    next / previous        prefix w   pick from tree
+               prefix A        reorder tabs: j/k pick, J/K move, Enter apply
 
   COPY & GRAB  prefix [        copy mode (leave with q)
                prefix PgUp     copy mode + page up in one key; then PgUp / PgDn
