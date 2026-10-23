@@ -120,7 +120,7 @@ set -g window-status-separator "  "
 set -g window-status-format "#[fg=#9399b2]#I #[fg=#a6adc8]$title#{E:@claude_tab_glyph}#[default]"
 set -g window-status-current-format "#[fg=#11111b]#[bg=#cba6f7]#[bold] #I $title#{E:@claude_tab_glyph_mono} #[default]"
 set -g status-left "#{?client_prefix,#[fg=#11111b]#[bg=#cba6f7]#[bold] #S #[default] ,#{?#{m/r:^[0-9]+\$,#{session_name}},#[fg=#9399b2] ,#[fg=#9399b2] #S  }}"
-set -g status-right "#[fg=#a6adc8]󰊢 #[fg=#cdd6f4]#(gitmux -cfg ~/.gitmux.conf '#{pane_current_path}')   #[fg=#a6adc8] #[fg=#cdd6f4]#{s|$HOME|~|:pane_current_path}  "
+set -g status-right "#[fg=#a6adc8]󰊢 #[fg=#cdd6f4]#(cd #{q:pane_current_path} && gitmux -cfg ~/.gitmux.conf)   #[fg=#a6adc8] #[fg=#cdd6f4]#{s|$HOME|~|:pane_current_path}  "
 B
 else
   echo 'set -gu window-status-separator' >"$fblock"

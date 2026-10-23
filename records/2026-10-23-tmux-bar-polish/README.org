@@ -251,6 +251,13 @@ catppuccin composition lines above the markers stand again.
 - Contrast (WCAG, computed in this round): on mantle =#181825= — index
   =#9399b2= 6.22:1, title =#a6adc8= 7.89:1, text =#cdd6f4= 12.14:1, roster red
   =#f38ba8= 7.58:1; crust =#11111b= on mauve =#cba6f7= 9.23:1.
+- gitmux call is =#(cd #{q:pane_current_path} && gitmux -cfg ~/.gitmux.conf)=:
+  =q:= backslash-escapes the path for an UNQUOTED shell word (quoting it as
+  well breaks on spaces). Checked by opening a window in a directory named
+  =it's $x;touch pwned=: =cd= landed there, gitmux printed its branch, no
+  file was created. The earlier ='#{pane_current_path}'= form (and
+  catppuccin's own ="…"= form) would have let a =' = in a directory name run
+  shell.
 - Limitation: outside a git repo the =󰊢= icon stands alone with gitmux's
   empty output after it (catppuccin's module had the same gap).
 - Live now: =oneblock=. Pending: the user's eye. Rollback without git:
