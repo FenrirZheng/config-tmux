@@ -14,7 +14,7 @@ Read the node before the source: each node explains one part of this workspace i
 - [[file:pane-jump.org][pane-jump]] — popup pane picker on =prefix g=; lists every pane on the server, filters on =#{pane_title}= as you type, Enter hands tmux one =switch-client= · covers: pane-jump/
 - [[file:session-lifecycle.org][session lifecycle]] — launches/resumes Claude sessions and snapshots/restores whole tmux teams across restarts · covers: cc-launch/, cc-layout/
 - [[file:sift.org][sift]] — popup regex search on =prefix /=; owns the keystroke loop, hands the final jump back to tmux · covers: sift/
-- [[file:win-order.org][win-order]] — ratatui popup on =prefix A=; J/K reorders this session's windows, Enter applies them as swap-window calls · covers: win-order/
+- [[file:win-order.org][win-order]] — ratatui popup on =prefix A=; N/P reorders this session's windows, Enter applies them as swap-window calls · covers: win-order/
 - [[file:talk-fleet.org][talk-fleet]] — addresses Claude panes by role name and broadcasts/collects a task across many · covers: talk-fleet/
 - [[file:text-piping.org][text piping]] — pipes pane text, scrollback, and copy-mode grabs into Claude, Emacs, or a tape · covers: to-claude/, to-emacs/, seek/, cc-tape/
 

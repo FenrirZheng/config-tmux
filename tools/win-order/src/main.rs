@@ -5,10 +5,12 @@
 //! `swap-window -s 0 -t 1` typed from memory: the popup lists the tabs, the
 //! footer names every key, and nothing reaches tmux until Enter.
 //!
-//!   * `j` / `k`  (↓ / ↑)          move the cursor
-//!   * `J` / `K`  (Shift+↓ / ↑)    carry the highlighted tab down / up
-//!   * Enter                        apply the new order
-//!   * Esc / `q`                    close, order untouched
+//!   * `n` / `p`  (`C-n` / `C-p`, ↓ / ↑)          move the cursor
+//!   * `N` / `P`  (`M-n` / `M-p`, Shift+↓ / ↑)    carry the highlighted tab down / up
+//!   * Enter                                       apply the new order
+//!   * `C-g` / Esc / `q`                           close, order untouched
+//!
+//! Emacs keys, not vim's: the user drives everything else from Emacs.
 //!
 //! The new order is applied as a run of `swap-window` calls over the session's
 //! existing index set, so gaps and `base-index` survive; the window that was
@@ -24,7 +26,7 @@ use ratatui::{DefaultTerminal, Frame};
 
 use tmuxlib as t;
 
-const FOOTER: &str = "j/k 選  J/K 搬  Enter 套用  Esc 取消";
+const FOOTER: &str = "n/p 選  N/P 搬  Enter 套用  C-g 取消";
 const W_NAME: usize = 30;
 
 // ---------------------------------------------------------------------------
@@ -140,7 +142,41 @@ fn run() {
 // TUI
 // ---------------------------------------------------------------------------
 
-/// Run the key loop. `Some(order)` on Enter, `None` on Esc / q / read error.
+#[derive(Debug, PartialEq)]
+enum Action {
+    Down,
+    Up,
+    CarryDown,
+    CarryUp,
+    Apply,
+    Cancel,
+}
+
+/// Map a key to what it does. Modifier checks come before the bare letter, so
+/// `C-n` and `M-n` are never read as plain `n`.
+fn action(code: KeyCode, mods: KeyModifiers) -> Option<Action> {
+    let ctrl = mods.contains(KeyModifiers::CONTROL);
+    let alt = mods.contains(KeyModifiers::ALT);
+    let shift = mods.contains(KeyModifiers::SHIFT);
+    Some(match code {
+        KeyCode::Char('g') if ctrl => Action::Cancel,
+        KeyCode::Char('n') if ctrl => Action::Down,
+        KeyCode::Char('p') if ctrl => Action::Up,
+        KeyCode::Char('n') if alt => Action::CarryDown,
+        KeyCode::Char('p') if alt => Action::CarryUp,
+        KeyCode::Down if shift => Action::CarryDown,
+        KeyCode::Up if shift => Action::CarryUp,
+        KeyCode::Char('N') => Action::CarryDown,
+        KeyCode::Char('P') => Action::CarryUp,
+        KeyCode::Char('n') | KeyCode::Down => Action::Down,
+        KeyCode::Char('p') | KeyCode::Up => Action::Up,
+        KeyCode::Enter => Action::Apply,
+        KeyCode::Esc | KeyCode::Char('q') => Action::Cancel,
+        _ => return None,
+    })
+}
+
+/// Run the key loop. `Some(order)` on Enter, `None` on cancel / read error.
 fn pick(terminal: &mut DefaultTerminal, mut wins: Vec<Win>) -> Option<Vec<Win>> {
     let slots: Vec<u32> = wins.iter().map(|w| w.index).collect();
     let mut state = ListState::default();
@@ -154,24 +190,19 @@ fn pick(terminal: &mut DefaultTerminal, mut wins: Vec<Win>) -> Option<Vec<Win>> 
         }
         let i = state.selected().unwrap_or(0);
         let last = wins.len() - 1;
-        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-        match key.code {
-            KeyCode::Esc | KeyCode::Char('q') => return None,
-            KeyCode::Enter => return Some(wins),
-            KeyCode::Char('J') | KeyCode::Down if shift || key.code == KeyCode::Char('J') => {
-                if i < last {
-                    wins.swap(i, i + 1);
-                    state.select(Some(i + 1));
-                }
+        match action(key.code, key.modifiers) {
+            Some(Action::Cancel) => return None,
+            Some(Action::Apply) => return Some(wins),
+            Some(Action::CarryDown) if i < last => {
+                wins.swap(i, i + 1);
+                state.select(Some(i + 1));
             }
-            KeyCode::Char('K') | KeyCode::Up if shift || key.code == KeyCode::Char('K') => {
-                if i > 0 {
-                    wins.swap(i, i - 1);
-                    state.select(Some(i - 1));
-                }
+            Some(Action::CarryUp) if i > 0 => {
+                wins.swap(i, i - 1);
+                state.select(Some(i - 1));
             }
-            KeyCode::Char('j') | KeyCode::Down => state.select(Some((i + 1).min(last))),
-            KeyCode::Char('k') | KeyCode::Up => state.select(Some(i.saturating_sub(1))),
+            Some(Action::Down) => state.select(Some((i + 1).min(last))),
+            Some(Action::Up) => state.select(Some(i.saturating_sub(1))),
             _ => {}
         }
     }
@@ -272,6 +303,23 @@ mod tests {
             }
         }
         assert_eq!(apply(&slots, &cur, &cmds), want);
+    }
+
+    #[test]
+    fn emacs_keys_map_to_actions() {
+        let none = KeyModifiers::NONE;
+        let (ctrl, alt, shift) = (KeyModifiers::CONTROL, KeyModifiers::ALT, KeyModifiers::SHIFT);
+        assert_eq!(action(KeyCode::Char('n'), none), Some(Action::Down));
+        assert_eq!(action(KeyCode::Char('p'), none), Some(Action::Up));
+        assert_eq!(action(KeyCode::Char('n'), ctrl), Some(Action::Down));
+        assert_eq!(action(KeyCode::Char('p'), ctrl), Some(Action::Up));
+        assert_eq!(action(KeyCode::Char('N'), shift), Some(Action::CarryDown));
+        assert_eq!(action(KeyCode::Char('P'), shift), Some(Action::CarryUp));
+        assert_eq!(action(KeyCode::Char('n'), alt), Some(Action::CarryDown));
+        assert_eq!(action(KeyCode::Char('p'), alt), Some(Action::CarryUp));
+        assert_eq!(action(KeyCode::Down, shift), Some(Action::CarryDown));
+        assert_eq!(action(KeyCode::Char('g'), ctrl), Some(Action::Cancel));
+        assert_eq!(action(KeyCode::Char('j'), none), None);
     }
 
     #[test]

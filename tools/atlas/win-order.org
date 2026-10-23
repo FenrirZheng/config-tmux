@@ -5,13 +5,13 @@
 
 * Summary
 
-=win-order= is the popup window reorderer bound to =prefix A=: it lists the windows of the current session, lets the user carry one up or down with =J= / =K=, and on Enter turns the new order into a batch of =swap-window= calls. It exists so that reordering tabs never needs =swap-window -s 0 -t 1= typed from memory — the footer names every key, and nothing reaches tmux until Enter, so Esc is a guaranteed no-op. It is the workspace's first Rust tool that draws its own TUI (ratatui with the crossterm backend); sift and pane-jump own their keystroke loops in C++, cc-fleet hands its list to fzf. The session comes from =display-message -p '#{session_id}'= because display-popup does not expand formats in its shell command, and every swap target is a =session:index= address, so the batch does not depend on which session the popup's own tmux client resolves to. Window names are only rendered into the popup, after =sanitize_format=; no option is stamped and errors go through =message_literal=.
+=win-order= is the popup window reorderer bound to =prefix A=: it lists the windows of the current session, lets the user carry one up or down with =N= / =P= (Emacs keys; =M-n= / =M-p= too, =n= / =p= / =C-n= / =C-p= move the cursor, =C-g= cancels), and on Enter turns the new order into a batch of =swap-window= calls. It exists so that reordering tabs never needs =swap-window -s 0 -t 1= typed from memory — the footer names every key, and nothing reaches tmux until Enter, so Esc is a guaranteed no-op. It is the workspace's first Rust tool that draws its own TUI (ratatui with the crossterm backend); sift and pane-jump own their keystroke loops in C++, cc-fleet hands its list to fzf. The session comes from =display-message -p '#{session_id}'= because display-popup does not expand formats in its shell command, and every swap target is a =session:index= address, so the batch does not depend on which session the popup's own tmux client resolves to. Window names are only rendered into the popup, after =sanitize_format=; no option is stamped and errors go through =message_literal=.
 
 * Crux
 
 The order is applied over the session's *existing* index set — gaps and =base-index= survive — by filling slot 0, then slot 1, and so on, one swap per slot that holds the wrong window; an unchanged order emits nothing:
 
-#+begin_src rust :file win-order/src/main.rs :lines 60-85
+#+begin_src rust :file win-order/src/main.rs :lines 62-87
 /// The `swap-window` commands that turn `current` into `desired`.
 ///
 /// `slots` is the session's index set in ascending order; `current[i]` and
@@ -40,7 +40,7 @@ fn plan_swaps(session: &str, slots: &[u32], current: &[String], desired: &[Strin
     cmds
 #+end_src
 
-After the swaps, =run()= appends =select-window -t <id>= of the window that was current when the popup opened (=main.rs:131-133=), so the user's focus follows the window, not the index. =-d= on each swap keeps tmux from moving focus mid-batch. The whole batch is one =tmuxlib::tmux_batch= call; a failure is reported on the status line as possibly partial.
+After the swaps, =run()= appends =select-window -t <id>= of the window that was current when the popup opened (=main.rs:133-135=), so the user's focus follows the window, not the index. =-d= on each swap keeps tmux from moving focus mid-batch. The whole batch is one =tmuxlib::tmux_batch= call; a failure is reported on the status line as possibly partial.
 
 * Links
 
@@ -48,11 +48,11 @@ After the swaps, =run()= appends =select-window -t <id>= of the window that was 
 
 * Sources
 :SOURCES:
-:win-order/src/main.rs: sha256:339f8e628fa8af983dad291f971a8f68cbfde95954b742bb6f24adefda72a5dc
+:win-order/src/main.rs: sha256:28872be46c48663ec2961bb3411a1a8669cdc3ee201d3ae08ed5017e2162c841
 :win-order/Cargo.toml: sha256:b35ca9542f6cbec14c2b83a89b452e71a42feeac7d2bbb5edd1173cce72de8ec
 :END:
 
 * Notes
 
-- Verified 2026-10-23 (UTC+8) on a throwaway server (=tmux -L wotest=, tmux 3.5a): windows =w0..w4=, popup-less run from window 0, =J= Enter → order =w1 w0 w2 w3 w4= with =w0= still active; =J= Esc → order unchanged. The popup path was driven through an attached client on nested throwaway servers (=-L wo_out= attaching =-L wo_in=, the pane-jump harness shape): =C-b A=, =J=, Enter reordered session =s1= while a later-created session =other= stayed untouched — so =display-message -p '#{session_id}'= inside the popup resolves to the client's session, not the most recent one.
-- =cargo test -p win-order= covers =plan_swaps= (first-two swap, last-to-first, no-op, gapped indexes =1 3 5=) and =parse_windows= (a tab inside a window name).
+- Verified 2026-10-23 (UTC+8) on a throwaway server (=tmux -L wotest=, tmux 3.5a): windows =w0..w4=, popup-less run from window 0, =N= Enter → order =w1 w0 w2 w3 w4= with =w0= still active; =N= Esc → order unchanged. The popup path was driven through an attached client on nested throwaway servers (=-L wo_out= attaching =-L wo_in=, the pane-jump harness shape): =C-b A=, =N=, Enter reordered session =s1= while a later-created session =other= stayed untouched — so =display-message -p '#{session_id}'= inside the popup resolves to the client's session, not the most recent one.
+- =cargo test -p win-order= covers =plan_swaps= (first-two swap, last-to-first, no-op, gapped indexes =1 3 5=), =parse_windows= (a tab inside a window name) and =action= (the Emacs key map, Ctrl/Alt before the bare letter). Keys switched from vim j/k to Emacs n/p on 2026-10-23 at the user's request; the nested-server run was repeated with =N=, =C-n C-n M-n=, =P C-g= and =n p P=.
