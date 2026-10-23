@@ -205,40 +205,73 @@ fn set_pane(pane: &str, key: &str, value: &str) -> Vec<String> {
 // behind an active sibling. That is the exact case these glyphs exist to catch,
 // so the duplication is load-bearing. Verified on tmux 3.5a.
 
-/// Worst state across a window's panes.
-const WINDOW_GLYPH: &str = "#{?#{m:*needs-input*,#{P:#{@claude_state}|,#{@claude_state}|}},#[fg=red]#[bold]✋,#{?#{m:*busy*,#{P:#{@claude_state}|,#{@claude_state}|}},#[fg=yellow]◐,#{?#{m:*idle*,#{P:#{@claude_state}|,#{@claude_state}|}},#[fg=green]●,}}}#[default]";
+/// Does any pane of the window in scope hold `state`? A tmux condition.
+fn any_pane(state: &str) -> String {
+    format!("#{{m:*{state}*,#{{P:#{{@claude_state}}|,#{{@claude_state}}|}}}}")
+}
 
-/// The "who needs me" answer, readable from any window: the index of every
-/// window holding a blocked agent. `#{W:}` loops windows, `#{P:}` their panes.
-const FLEET_SEGMENT: &str = "#[fg=red]#[bold]#{W:#{?#{m:*needs-input*,#{P:#{@claude_state}|,#{@claude_state}|}},#I✋ ,}}#[default]";
+/// Worst state across a window's panes, a space plus the glyph, or empty;
+/// the theme's window right separator supplies the space after it.
+/// Published as `@claude_tab_glyph` for the theme's window text to embed, so
+/// it sits INSIDE the tab block rather than after its closing separator.
+fn window_glyph() -> String {
+    let (n, b, i) = (
+        t::State::NeedsInput.glyph(),
+        t::State::Busy.glyph(),
+        t::State::Idle.glyph(),
+    );
+    format!(
+        "#{{?{},#[fg=#f38ba8]#[bold] {n},#{{?{},#[fg=#f9e2af] {b},#{{?{},#[fg=#a6e3a1] {i},}}}}}}#[nobold]",
+        any_pane("needs-input"),
+        any_pane("busy"),
+        any_pane("idle"),
+    )
+}
 
-/// Splice the beacon segments into the theme's status formats, idempotently.
+/// The "who needs me" answer, readable from any window: ONE block counting
+/// the windows that hold a blocked agent, shaped like the theme's modules
+/// (bell on a red icon cell, count on the theme's module text bg —
+/// `@catppuccin_status_module_text_bg`, so it follows the palette — flat █ ends), absent when the
+/// count is 0. The tabs already mark WHICH windows; repeating a bell per window
+/// here was visual noise. `#{W:}` loops windows, `#{P:}` their panes, and
+/// `#{n:}` takes the length of the one-`x`-per-blocked-window string.
 ///
-/// The theme's own format is cached in an `@claude_bar_base_*` option on first
-/// run and every later run recomputes from that cache — so sourcing this config
-/// repeatedly (which happens on every `tmux source-file`) appends exactly once.
+/// Styles are separate `#[..]` directives: a comma inside `#[fg=a,bg=b]` would
+/// be read as the `#{?:}` separator.
+fn fleet_segment() -> String {
+    let blocked = format!("#{{W:#{{?{},x,}}}}", any_pane("needs-input"));
+    format!(
+        "#{{?{blocked},#[fg=#f38ba8]#[bg=default]\u{2588}#[fg=#11111b]#[bg=#f38ba8]{} #[fg=#cdd6f4]#[bg=#{{E:@catppuccin_status_module_text_bg}}] #{{n:{blocked}}}#[fg=#{{E:@catppuccin_status_module_text_bg}}]#[bg=default]\u{2588} ,}}#[default]",
+        t::State::NeedsInput.glyph(),
+    )
+}
+
+/// Publish the tab glyph and splice the fleet roster into the theme's
+/// status-right, idempotently.
+///
+/// `@claude_tab_glyph` is a plain option the window text in tmux.conf embeds
+/// with `#{E:@claude_tab_glyph}`; writing it twice is harmless. status-right is
+/// an append, so the theme's own value is cached in `@claude_bar_base_sr` on
+/// first run and every later run recomputes from that cache — sourcing this
+/// config repeatedly (every `tmux source-file`) appends exactly once.
 fn install_bar() {
-    for (option, base_key, segment) in [
-        ("window-status-format", "@claude_bar_base_wsf", WINDOW_GLYPH),
-        (
-            "window-status-current-format",
-            "@claude_bar_base_wscf",
-            WINDOW_GLYPH,
-        ),
-        ("status-right", "@claude_bar_base_sr", FLEET_SEGMENT),
-    ] {
-        let base = match t::tmux(["show-options", "-gqv", base_key]) {
-            Ok(cached) if !cached.is_empty() => cached,
-            _ => {
-                let Ok(current) = t::tmux(["show-options", "-gv", option]) else {
-                    continue;
-                };
-                t::tmux_ok(["set-option", "-g", base_key, &current]);
+    t::tmux_ok(["set-option", "-g", "@claude_tab_glyph", &window_glyph()]);
+    let base = match t::tmux(["show-options", "-gqv", "@claude_bar_base_sr"]) {
+        Ok(cached) if !cached.is_empty() => cached,
+        _ => match t::tmux(["show-options", "-gv", "status-right"]) {
+            Ok(current) => {
+                t::tmux_ok(["set-option", "-g", "@claude_bar_base_sr", &current]);
                 current
             }
-        };
-        t::tmux_ok(["set-option", "-g", option, &format!("{base}{segment}")]);
-    }
+            Err(_) => return apply_border_rule_to_existing_windows(),
+        },
+    };
+    t::tmux_ok([
+        "set-option",
+        "-g",
+        "status-right",
+        &format!("{base}{}", fleet_segment()),
+    ]);
     apply_border_rule_to_existing_windows();
 }
 
@@ -392,5 +425,40 @@ mod tests {
         assert!(!is_peer_traffic("fix the keyd IME toggle"));
         // A banner further down the prompt is quoted text, not a relay.
         assert!(!is_peer_traffic("look at this:\n\n\n\n### [talk] quoted"));
+    }
+
+    /// Brace balance is the failure mode of hand-built tmux formats: one
+    /// missing `}` and tmux prints the raw text into the status bar.
+    fn balanced(f: &str) -> bool {
+        let mut depth = 0i32;
+        for c in f.chars() {
+            match c {
+                '{' => depth += 1,
+                '}' => depth -= 1,
+                _ => {}
+            }
+            if depth < 0 {
+                return false;
+            }
+        }
+        depth == 0
+    }
+
+    #[test]
+    fn bar_formats_are_balanced_and_use_the_shared_glyphs() {
+        let w = window_glyph();
+        assert!(balanced(&w), "{w}");
+        for st in [t::State::NeedsInput, t::State::Busy, t::State::Idle] {
+            assert!(w.contains(&format!(" {},", st.glyph())), "{w}");
+        }
+        // Blocked must be tested first: it is the state the glyph exists for.
+        assert!(w.find("needs-input").unwrap() < w.find("busy").unwrap());
+        let f = fleet_segment();
+        assert!(balanced(&f), "{f}");
+        assert!(f.contains(t::State::NeedsInput.glyph()));
+        assert!(f.contains("#{W:") && f.contains("#{n:"));
+        assert!(f.contains("#{E:@catppuccin_status_module_text_bg}"));
+        // No comma may sit inside a #[..] style: it would split the #{?:}.
+        assert!(!f.split("#[").skip(1).any(|d| d.split(']').next().unwrap().contains(',')));
     }
 }
