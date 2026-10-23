@@ -179,7 +179,9 @@ fn width(s: &str) -> usize {
 }
 
 /// Only the East Asian Wide/Fullwidth blocks count double. The state glyphs
-/// (`● ◐ ✋ ○`), `✳` and the braille spinners are East-Asian-*Ambiguous* and
+/// (`State::glyph()`, Nerd Font private-use codepoints) occupy one cell — the
+/// non-Mono font draws them wider, and the space that always follows absorbs
+/// the overhang. `✳` and the braille spinners are East-Asian-*Ambiguous* and
 /// render single-width in this terminal.
 fn char_width(c: char) -> usize {
     match c as u32 {
@@ -434,6 +436,6 @@ mod tests {
     #[test]
     fn unknown_state_still_names_a_column() {
         let rows = build_rows(&[pane("%1", "", None)], NOW, &no_tail);
-        assert!(rows[0].contains("○ unknown"));
+        assert!(rows[0].contains(&format!("{} unknown", t::State::Unknown.glyph())));
     }
 }

@@ -71,7 +71,7 @@ The pipe wiring that makes cc-tape a stream tap, not a screen capture:
 :to-emacs/src/main.rs: sha256:fcd3b2001a4cbf8f5a7510ad94069bf3e04ffb999c72d0f8caa0a472afcd74aa
 :seek/src/main.rs: sha256:f68c7f5af358c72a02b91223d63bf700a607d033c97e7b7f5c502fa9b0d1a53c
 :cc-tape/src/main.rs: sha256:500539cd19a495ff0eb22e11ceb58891dcb074fcab92083724096b34fc309bc5
-:tmuxlib/src/lib.rs: sha256:14689e2aa7a744eb9389257e8c6fecaa54de92075e439153ea388e0be2453b36
+:tmuxlib/src/lib.rs: sha256:aa90cd2402339acda2a2b53cde334e761371e2ea768ca7ecd4d8f050e94a0d8e
 :END:
 
 * Notes

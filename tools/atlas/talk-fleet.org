@@ -67,7 +67,7 @@ pub fn resolve_target(target: &str) -> Result<String, String> {
 * Sources
 :SOURCES:
 :talk-fleet/src/main.rs: sha256:769f04302901418a526bea4379b39b47fa68729637bf134e67fe5cce751a5a88
-:tmuxlib/src/lib.rs: sha256:14689e2aa7a744eb9389257e8c6fecaa54de92075e439153ea388e0be2453b36
+:tmuxlib/src/lib.rs: sha256:aa90cd2402339acda2a2b53cde334e761371e2ea768ca7ecd4d8f050e94a0d8e
 :END:
 
 * Notes

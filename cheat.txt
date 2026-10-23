@@ -46,7 +46,7 @@
                all of these land in wl-copy too — Ctrl+Shift+V still works
                nothing here ever presses Enter — you type the question
 
-  BORDER       ● green done    ◐ yellow working    ✋ red needs your input
+  BORDER       󰄬 green done    󰔟 yellow working     red needs your input
                ▶ CLAUDE = inbox   ●REC = recording   [name] = talk-fleet role
 
   OTHER        prefix P        popup shell in this pane's directory

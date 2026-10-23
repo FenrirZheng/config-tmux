@@ -47,7 +47,7 @@ pub fn sanitize_format(s: &str) -> String {
 
 * Sources
 :SOURCES:
-:tmuxlib/src/lib.rs: sha256:14689e2aa7a744eb9389257e8c6fecaa54de92075e439153ea388e0be2453b36
+:tmuxlib/src/lib.rs: sha256:aa90cd2402339acda2a2b53cde334e761371e2ea768ca7ecd4d8f050e94a0d8e
 :tmuxlib/Cargo.toml: sha256:c7ef0d685fc887c73db848046830140b0b70e8220725870f9f692768f1bdb7c7
 :END:
 

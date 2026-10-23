@@ -42,7 +42,7 @@ tmux has exactly one =pane-border-format= per window. All six border features co
 ▶ CLAUDE   pane_marked      to-claude inbox target
 ●REC       pane_pipe        cc-tape recording
 [role]     @claude_role     talk-fleet role badge
-● / ◐ / ✋  @claude_state    cc-beacon lifecycle + @claude_activity
+󰄬 / 󰔟 /   @claude_state    cc-beacon lifecycle + @claude_activity (glyphs: tmuxlib State::glyph)
 task-slug  @claude_task     cc-beacon first-prompt slug
 #+end_src
 
@@ -109,7 +109,7 @@ Owned by =cc-beacon= unless noted. Consumers must tolerate every one being empty
 | =@claude_session_id=  | UUID                               | cc-beacon  | cc-layout (=claude --resume=)            |
 | =@claude_role=        | role name                          | talk-fleet | border, talk-fleet                       |
 
-There is deliberately *no* per-window rollup option. tmux computes it live: =#{P:}= loops a window's panes and =#{W:}= loops a session's windows, so the status bar derives "does this window hold a blocked agent" straight from =@claude_state=. Storing it would cost two extra tmux round-trips on every tool call and could go stale when a pane moved between windows.
+There is deliberately *no* per-window rollup option. tmux computes it live: =#{P:}= loops a window's panes and =#{W:}= loops a session's windows, so the status bar derives "does this window hold a blocked agent" straight from =@claude_state=. =cc-beacon install-bar= publishes that per-window rollup as the global format option =@claude_tab_glyph=, which tmux.conf's =@catppuccin_window_*_text= embeds with =#{E:}= so the glyph sits inside the tab block; the fleet roster is appended to =status-right= over the cached theme value =@claude_bar_base_sr=. Storing it would cost two extra tmux round-trips on every tool call and could go stale when a pane moved between windows.
 
 One trap worth knowing before editing those formats: *=#{P:A,B}= takes two formats* — =A= for the active pane, =B= for the others — so the same format must be written twice to visit every pane. =#{P:#{@claude_state},}= looks right and silently reports one pane, which hides exactly the case the glyphs exist for (a blocked agent behind an active sibling). Measured on this machine: batching the beacon's writes into one tmux invocation and dropping the stored rollup took the per-tool-call hook from 21 ms to 4 ms.
 

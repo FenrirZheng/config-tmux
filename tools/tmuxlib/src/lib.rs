@@ -68,12 +68,20 @@ impl State {
         }
     }
 
+    /// The one state vocabulary: status-bar tabs and fleet roster (cc-beacon),
+    /// pane border (claude.conf), cc-fleet and cc-attend all draw these.
+    ///
+    /// All four are Nerd Font private-use glyphs (bell, hourglass, check,
+    /// dashed circle) so they share one design with the theme's module icons;
+    /// `✋` used to be drawn by a fallback CJK font (VL Gothic) and clashed.
+    /// The terminal font is the non-Mono Nerd Font, which draws them wider
+    /// than one cell — always render a space after one.
     pub fn glyph(self) -> &'static str {
         match self {
-            State::NeedsInput => "✋",
-            State::Idle => "●",
-            State::Busy => "◐",
-            State::Unknown => "○",
+            State::NeedsInput => "\u{f0f3}",
+            State::Idle => "\u{f012c}",
+            State::Busy => "\u{f051f}",
+            State::Unknown => "\u{f0766}",
         }
     }
 

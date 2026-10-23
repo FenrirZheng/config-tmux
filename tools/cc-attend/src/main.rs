@@ -94,7 +94,7 @@ fn is_stale_idle(p: &Pane, now: u64) -> bool {
     p.age_secs(now).is_some_and(|age| age > STALE_IDLE_SECS)
 }
 
-/// `→ ✋ needs-input  work2:1.0  fix-auth-middleware (blocked 4m)`
+/// `→  needs-input  work2:1.0  fix-auth-middleware (blocked 4m)`
 ///
 /// The task slug and the session name reach here from a user prompt and a
 /// user-chosen session name, and `display-message` runs both `#{…}` format
@@ -302,14 +302,14 @@ mod tests {
         p.task = "fix-auth-middleware".to_string();
         assert_eq!(
             describe(&p, NOW),
-            "→ ✋ needs-input  work2:1.0  fix-auth-middleware (blocked 4m)"
+            "→ \u{f0f3} needs-input  work2:1.0  fix-auth-middleware (blocked 4m)"
         );
     }
 
     #[test]
     fn describe_drops_the_slug_column_and_an_unknown_age() {
         let p = pane("%7", "idle", None);
-        assert_eq!(describe(&p, NOW), "→ ● idle  s:0.0");
+        assert_eq!(describe(&p, NOW), "→ \u{f012c} idle  s:0.0");
     }
 
     #[test]
