@@ -1,0 +1,265 @@
+#+TITLE: tmux status bar polish — flat blocks + Nerd Font state glyphs
+#+DATE: 2026-10-23 (Asia/Taipei)
+
+* Why
+
+User, 2026-10-23: the self-customized bottom bar 「美感不足, icon沒有藝術氣息」.
+Diagnosis on the live server (tmux 3.5a, catppuccin mocha v2.3.0, gitmux,
+Alacritty + DejaVuSansM Nerd Font, non-Mono):
+
+1. =✋= (U+270B) is not in DejaVuSansM Nerd Font —
+   =fc-match 'DejaVuSansM Nerd Font:charset=270b'= returned VL Gothic, so the
+   red alert glyph in tabs, roster and pane border was drawn by a CJK fallback.
+2. Module pills were rounded-left / flat-right: catppuccin's default
+   =@catppuccin_status_right_separator= is a bare space.
+3. Tabs were =basic= rectangles while modules were rounded capsules.
+4. Each Claude tab carried two glyphs: Claude Code's =✳= title prefix plus
+   cc-beacon's state glyph appended after the tab.
+5. gitmux symbols (=↑· ↓· ● ✖ ✚ … ⚑ ✔=) were a third visual family.
+
+Second round, same day: a screenshot critique the user pasted after the first
+pass found five more defects, all confirmed on the server and fixed:
+
+6. The CURRENT tab stayed square. catppuccin fills
+   =@catppuccin_window_current_*_separator= with =set -o= (only if unset), and
+   the running server still held the =basic= values.
+7. The session pill touched tab 0 (read as "00"), and =status-left-length= 10
+   cut it before its closing cap.
+8. A long tab title pushed the row into the right-hand modules (=>= overflow).
+9. Four saturated foregrounds inside the gitmux pill, and gitmux's
+   =clear: "#[none]"= reset the background mid-pill.
+10. The fleet roster repeated a bell per blocked window — the tabs already
+    carry those bells.
+
+* User picks (AskUserQuestion, 2026-10-23)
+
+- Direction: 膠囊統一 — stay on catppuccin mocha (theme pick of
+  [[file:../2026-08-23-2241-tmux-ui-clarity/tmux-ui-clarity.org]] stands).
+- Glyph scope: 整套一起換 — bar, pane border, cc-fleet, cc-attend, cheat sheet,
+  docs, atlas share one vocabulary.
+- Bar background: try both live (see below).
+- Third round: the rounded capsules went live and the user rejected them —
+  「膠囊形狀很醜」. Picked 方塊（平切） over minimal text-only, slanted and
+  underline. Glyphs, colors, the 20-cell title cap and the single count badge
+  stayed.
+
+* What changed
+
+| meaning     | before | after   | codepoint          |
+|-------------+--------+---------+--------------------|
+| needs-input | ✋     |        | U+F0F3 bell        |
+| busy        | ◐      | 󰔟       | U+F051F hourglass  |
+| idle        | ●      | 󰄬       | U+F012C check      |
+| unknown     | ○      | 󰝦       | U+F0766            |
+
+Every codepoint verified with =fc-list ":charset=<hex>" family= listing
+DejaVuSansM Nerd Font. Single definition: =tools/tmuxlib/src/lib.rs=
+=State::glyph()=; claude.conf's pane-border-format repeats the literals (tmux
+config cannot call Rust). Colors moved from named red/yellow/green to mocha
+hex (=#f38ba8= / =#f9e2af= / =#a6e3a1=).
+
+- =tmux.conf= (theme block, above =run tpm=): FLAT BLOCKS — window style
+  =basic=; module separators =█= (left) and =█ = (right), solid cells
+  in the module's own colors, no curves; =@catppuccin_status_connect_separator
+  "no"= so every module closes onto the bar background; the three current-tab
+  separators =set -gu= so each reload re-derives them; window text
+  =" #{=/20/…;s|^✳ ||:pane_title}#{E:@claude_tab_glyph}"= (prefix stripped,
+  20-cell cap); =@catppuccin_status_background= explicit.
+- =claude.conf=: =status-right-length 100=, =status-left-length 40=; border glyphs.
+- =cc-beacon install-bar= sets =@claude_tab_glyph= instead of appending to
+  =window-status-format= / =-current-format= (which put the glyph after the
+  closing cap). The cache keys =@claude_bar_base_wsf= / =_wscf= are dead.
+  The fleet roster is now ONE block =█  N█= counting blocked
+  windows via =#{n:#{W:…}}=, absent at 0 (verified on 3.5a: =#{n:}= of a
+  nested format returns the expansion's length).
+- =~/.gitmux.conf= (untracked, outside this repo). Symbols: ahead  U+F062,
+  behind  U+F063, staged  U+F067, conflict  U+F071, modified  U+F040,
+  untracked  U+F128, stashed  U+F187, clean  U+F00C, each followed by a
+  space. Styles: everything =#[fg=#cdd6f4]=, branch bold, only state and
+  conflict =#f38ba8=; =clear: "#[nobold]#[fg=#cdd6f4]"=, never =#[none]=.
+  Previous values are quoted in that file's comments.
+
+* Verification (2026-10-23, live server)
+
+- =cargo test -p tmuxlib -p cc-attend -p cc-beacon -p cc-fleet=: all pass.
+  cc-beacon has a test for brace balance of both generated formats and for
+  no comma inside a =#[..]= of the conditional roster.
+- Rendered with =tmux display -p '#{E:…}'= (styles stripped), flat-block
+  round: tab = 1  tmux-status-bar-poli… 󰔟 =; right side
+  =█󰊢  █ █  ~/.tmux█ █  2█=.
+- =atlas-stale --crux=: 0 stale, 0 crux; =atlas-links=: 0 findings.
+- Not verifiable from here: the look itself. Final acceptance is the user's eye.
+
+* Background A/B
+
+=bash ~/.tmux/records/2026-10-23-tmux-bar-polish/try-background.sh none= (or
+=default=) rewrites the one option line, unsets =@claude_bar_base_sr=, reloads.
+Committed value: =default= (opaque mantle) until the user picks. With =none=
+the module end blocks are drawn in the module's own color, so they keep their
+shape on a transparent bar.
+
+* Round four: palette and tab information (2026-10-23)
+
+Shapes stay flat blocks. A brief from the user named the remaining defects as
+colour and information, not geometry, all confirmed on the live server:
+
+1. Six hues in one row: green session, purple active tab, grey inactive
+   tabs, teal git icon cell, pink folder icon cell, red bell.
+2. Every inactive tab carried its own grey number cell — heavy.
+3. Session "0" beside tab 0 read as "0 0".
+4. Shell tabs all read "fenrir": a plain shell leaves =pane_title= at the
+   hostname (=#{host_short}= = =fenrir=).
+5. Optional: the 20-cell "…" cut looked clipped.
+
+** What changed
+
+- =tmux.conf=: the two window-text lines became a marked block
+  (=# >>> palette= … =# <<< palette=) owned by =try-palette.sh=. Every
+  option inside is set explicitly in every variant, because catppuccin fills
+  =@catppuccin_status_<module>_icon_bg/_fg= with =set -o= and a dropped line
+  would leave the previous variant's colour live.
+- =claude.conf=: status-left is wrapped in
+  =#{?#{&&:#{@bar_hide_numeric_session},#{m/r:^[0-9]+$,#{session_name}}},,…}=.
+  The flag is 0 except in =neutral-info= / =neutral-short=. Side effect when
+  hidden: the prefix-armed session icon is hidden too.
+- =try-palette.sh= variants:
+  | variant       | fixes   | what it sets                                                                 |
+  |---------------+---------+------------------------------------------------------------------------------|
+  | original      | —       | round-three values, for comparison and rollback                              |
+  | neutral       | 1, 2    | module icon cells surface2 =#585b70= with fg =#cdd6f4= (4.62:1); session icon mauve =#cba6f7= only while prefix is armed; inactive tabs drop the number cell, index moves into the title cell in overlay2 =#9399b2= (4.45:1) |
+  | neutral-info  | 1-4     | neutral + numeric session hidden + a tab whose title is the hostname shows the cwd basename, =~= at =$HOME= |
+  | neutral-short | 1-5     | neutral-info + titles cut at 14 cells, no ellipsis                           |
+  Red =#f38ba8= remains only on the fleet bell block and gitmux state/conflict.
+- No new glyphs, no change to shapes, =█= separators, state glyphs, roster
+  logic, cc-beacon or =~/.gitmux.conf=.
+
+** Verification
+
+- Each variant applied with the script, then rendered with
+  =tmux display -p '#{E:…}'= per window; roster count (=#{W:= occurrences in
+  status-right) stayed 1 after every switch, so no double-append.
+  Tab row, styles stripped:
+  - neutral: =  0 ig 󰔟 |  1 tmux-status-bar-poli… 󰔟 |  3 fenrir | …=
+  - neutral-info: =… |  3 ig_lottery |  4 ~ | …= and status-left empty
+  - neutral-short: =  1 tmux-status-ba 󰔟 |  2 change-note-in 󰔟 | …=
+- Measured on 3.5a: =#{b:}= only accepts a variable name — =#{b:#{s…}}=
+  returned the full path, hence the separate =$HOME= test.
+- cargo tests not re-run: nothing cc-beacon reads changed this round.
+- Live now: =neutral=. Pending: the user's pick; commit after that.
+
+* Round five: lift the blocks (2026-10-23)
+
+User verdict on the live =neutral= variant: 「色調很暗」 — the surface0/surface2
+blocks sat too close to the mantle bar and the row read as one dark smear.
+Measured: surface0 =#313244= on mantle =#181825= is 1.40:1, surface2 icon cells
+=#585b70= 2.63:1. Shapes, the single mauve accent and red-only alerts stay;
+the bar stays mantle (=@catppuccin_status_background "default"=) so the
+blocks have something to stand against.
+
+** What changed
+
+- =try-palette.sh=: the neutral family is parameterised (icon bg/fg, module
+  text bg, inactive tab bg, index fg) and gains two variants:
+  | variant          | icon cell                | text cell / inactive tab | index fg  |
+  |------------------+--------------------------+--------------------------+-----------|
+  | neutral-bright   | overlay1 =#7f849c=, glyph base =#1e1e2e= | surface1 =#45475a= / surface1 =#45475a= | subtext0 =#a6adc8= |
+  | neutral-brighter | overlay2 =#9399b2=, glyph base =#1e1e2e= | surface1 =#45475a= / surface2 =#585b70= | subtext0 =#a6adc8= |
+  Session icon still turns mauve =#cba6f7= (glyph crust) while prefix is armed;
+  current tab is mauve number + surface1 title in every variant.
+- Every variant, =original= included, now also sets
+  =@catppuccin_status_module_text_bg=, =@catppuccin_window_text_color= and
+  =@catppuccin_window_current_text_color= explicitly (all filled with =set -o=).
+- =cc-beacon=: the fleet bell block's count cell read a hard-coded =#313244=;
+  it now reads =#{E:@catppuccin_status_module_text_bg}=, so it follows the
+  palette instead of staying the one dark cell. Format only — the roster
+  logic (=#{W:}= / =#{n:}= count, absent at 0) is unchanged. Test added.
+
+** Verification
+
+- =cargo test -p tmuxlib -p cc-attend -p cc-beacon -p cc-fleet=: all pass.
+- Applied =neutral-brighter= then =neutral-bright= with the script; each
+  rendered with =tmux display -p '#{E:…}'=: icon cells, text cells, inactive
+  tab and roster count cell carry the variant's hex; roster count stayed 1.
+- Contrast (sRGB, WCAG formula):
+  | pair                                  | bright | brighter |
+  |---------------------------------------+--------+----------|
+  | icon glyph on icon cell               | 4.44   | 5.81     |
+  | icon cell vs mantle bar               | 4.75   | —        |
+  | text cell / inactive block vs bar     | 1.92   | 1.92 / 2.63 |
+  | title =#cdd6f4= on inactive tab       | 6.31   | 4.62     |
+  | index =#a6adc8= on inactive tab       | 4.10   | 3.00     |
+- Noted for the pick: in =neutral-bright= the current tab's title cell and
+  inactive tabs share surface1, so only the mauve number cell marks the
+  current tab; in =neutral-brighter= the inactive tabs (surface2) are lighter
+  than the current tab's title cell (surface1).
+- Live now: =neutral-bright=. Pending: the user's pick between the two.
+
+* Round six: one block (2026-10-23)
+
+User verdict on =neutral-bright=: still too dark, then 「應該大刀闊斧 使用現代的
+配色風格來設計bar」. Offered three directions (AskUserQuestion): 一塊規則,
+透明底線, 亮色塊. Picked **一塊規則** — the current tab is the only filled block
+on the bar; everything else is text, and hierarchy comes from brightness, not
+from the count of coloured cells. Rounds 1–5 only re-tinted catppuccin's
+block-per-module layout; this round stops using its composed strings.
+
+** Design
+
+| element       | spec                                                                                  |
+|---------------+---------------------------------------------------------------------------------------|
+| bar           | mantle =#181825=, unchanged; one cell of padding at each end                          |
+| session       | text =#S= overlay2 =#9399b2=; hidden when the name is purely numeric; prefix armed → mauve block =#[bg=#cba6f7]#[fg=#11111b]#[bold] #S = |
+| inactive tab  | index overlay2 =#9399b2=, title subtext0 =#a6adc8=, no background, no number cell     |
+| current tab   | mauve =#cba6f7= block, crust =#11111b= bold: = #I title glyph =                        |
+| separator     | =window-status-separator "  "=                                                        |
+| title         | =$smart= (hostname-titled shell → directory basename, =~= at home), =#{=14:…}=, no ellipsis |
+| git           | =󰊢= subtext0 + gitmux text (=~/.gitmux.conf= already single-fg, branch bold, conflict red) |
+| directory     | == subtext0 + =~=-relative path =#cdd6f4=                                            |
+| fleet roster  | text =#[fg=#f38ba8]#[bold] N=, absent at 0                                           |
+| state glyphs  | unchanged; the CURRENT tab uses =@claude_tab_glyph_mono= (no colour of its own)        |
+
+** Where the formats live
+
+catppuccin stays loaded for its palette and for the older A/B variants, but
+no longer owns the formats. Anything above =run tpm= loses to its
+unconditional =set -gF window-status-*=, so the one-block formats are written
+AFTER the theme into =claude.conf=, between =# >>> bar-format= /
+=# <<< bar-format=, by =try-palette.sh oneblock=. Every other variant writes
+an empty block there (plus =set -gu window-status-separator=), and the
+catppuccin composition lines above the markers stand again.
+
+- =cc-beacon install-bar=: publishes =@claude_tab_glyph_mono= beside
+  =@claude_tab_glyph= — same conditional, no =#[fg=]=, so the glyph inherits
+  the mauve block's crust foreground (red or yellow on mauve was unreadable).
+  The roster is now text: =#{?blocked,#[fg=#f38ba8]#[bold] N ,}#[default]=;
+  the =█= cells and =@catppuccin_status_module_text_bg= are gone. Tests:
+  mono twin balanced, same glyph order, contains no =#[=; roster contains no
+  =█= and no =#[bg=]=.
+
+** Verification (live server)
+
+- =cargo test -p cc-beacon -p tmuxlib=: pass; =cargo build --release -p cc-beacon=.
+- =bash try-palette.sh oneblock=, then =tmux display -p '#{T:…}'=:
+  current tab = #[fg=#11111b]#[bg=#cba6f7]#[bold] 0 ig  #[default]=; inactive
+  = #[fg=#9399b2]0 #[fg=#a6adc8]ig…=; status-right ends in
+  = #[fg=#f38ba8]#[bold] 3 #[default]= with 3 blocked windows; =grep -c █=
+  on =status-right=: 0; separator =[  ]=. (=#()= gitmux output is blank under
+  =display -p=; it renders on the bar.)
+- Every window rendered (=tmux list-windows -F '#{T:window-status-format}'=):
+  the three hostname-titled shells show =ig_lottery=, =~=, =~=; the CJK title
+  cuts at 14 cells (=Rust tmux 库选=).
+- Contrast (WCAG, computed in this round): on mantle =#181825= — index
+  =#9399b2= 6.22:1, title =#a6adc8= 7.89:1, text =#cdd6f4= 12.14:1, roster red
+  =#f38ba8= 7.58:1; crust =#11111b= on mauve =#cba6f7= 9.23:1.
+- Limitation: outside a git repo the =󰊢= icon stands alone with gitmux's
+  empty output after it (catppuccin's module had the same gap).
+- Live now: =oneblock=. Pending: the user's eye. Rollback without git:
+  =bash try-palette.sh neutral-bright=.
+
+* Rollback
+
+=git revert= the commits, =cargo build --release= in =tools/=, restore
+=~/.gitmux.conf= from the "Previous" lines in its own comments, then
+=tmux set -gu @claude_bar_base_sr; tmux source-file ~/.tmux.conf=.
+Round four alone: =bash try-palette.sh original= restores the round-three
+look without touching git.

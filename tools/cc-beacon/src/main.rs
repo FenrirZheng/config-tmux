@@ -228,34 +228,54 @@ fn window_glyph() -> String {
     )
 }
 
-/// The "who needs me" answer, readable from any window: ONE block counting
-/// the windows that hold a blocked agent, shaped like the theme's modules
-/// (bell on a red icon cell, count on the theme's module text bg —
-/// `@catppuccin_status_module_text_bg`, so it follows the palette — flat █ ends), absent when the
-/// count is 0. The tabs already mark WHICH windows; repeating a bell per window
-/// here was visual noise. `#{W:}` loops windows, `#{P:}` their panes, and
-/// `#{n:}` takes the length of the one-`x`-per-blocked-window string.
+/// `window_glyph()` without its colour directives, published as
+/// `@claude_tab_glyph_mono` for the CURRENT tab: that tab is the bar's one
+/// filled block (mauve, dark text — the "one block" bar of
+/// records/2026-10-23-tmux-bar-polish/), and a red or yellow glyph on mauve
+/// is unreadable, so the glyph inherits the block's foreground instead.
+fn window_glyph_mono() -> String {
+    let (n, b, i) = (
+        t::State::NeedsInput.glyph(),
+        t::State::Busy.glyph(),
+        t::State::Idle.glyph(),
+    );
+    format!(
+        "#{{?{}, {n},#{{?{}, {b},#{{?{}, {i},}}}}}}",
+        any_pane("needs-input"),
+        any_pane("busy"),
+        any_pane("idle"),
+    )
+}
+
+/// The "who needs me" answer, readable from any window: a red bold
+/// ` N` counting the windows that hold a blocked agent, absent when the
+/// count is 0. Text, not a block: on the one-block bar only the current tab
+/// is filled, and an alert is carried by colour alone. The tabs already mark
+/// WHICH windows; repeating a bell per window here was visual noise. `#{W:}`
+/// loops windows, `#{P:}` their panes, and `#{n:}` takes the length of the
+/// one-`x`-per-blocked-window string.
 ///
 /// Styles are separate `#[..]` directives: a comma inside `#[fg=a,bg=b]` would
 /// be read as the `#{?:}` separator.
 fn fleet_segment() -> String {
     let blocked = format!("#{{W:#{{?{},x,}}}}", any_pane("needs-input"));
     format!(
-        "#{{?{blocked},#[fg=#f38ba8]#[bg=default]\u{2588}#[fg=#11111b]#[bg=#f38ba8]{} #[fg=#cdd6f4]#[bg=#{{E:@catppuccin_status_module_text_bg}}] #{{n:{blocked}}}#[fg=#{{E:@catppuccin_status_module_text_bg}}]#[bg=default]\u{2588} ,}}#[default]",
+        "#{{?{blocked},#[fg=#f38ba8]#[bold]{} #{{n:{blocked}}} ,}}#[default]",
         t::State::NeedsInput.glyph(),
     )
 }
 
-/// Publish the tab glyph and splice the fleet roster into the theme's
+/// Publish the tab glyphs and splice the fleet roster into the theme's
 /// status-right, idempotently.
 ///
-/// `@claude_tab_glyph` is a plain option the window text in tmux.conf embeds
-/// with `#{E:@claude_tab_glyph}`; writing it twice is harmless. status-right is
+/// `@claude_tab_glyph` / `@claude_tab_glyph_mono` are plain options the
+/// window formats embed with `#{E:…}`; writing them twice is harmless. status-right is
 /// an append, so the theme's own value is cached in `@claude_bar_base_sr` on
 /// first run and every later run recomputes from that cache — sourcing this
 /// config repeatedly (every `tmux source-file`) appends exactly once.
 fn install_bar() {
     t::tmux_ok(["set-option", "-g", "@claude_tab_glyph", &window_glyph()]);
+    t::tmux_ok(["set-option", "-g", "@claude_tab_glyph_mono", &window_glyph_mono()]);
     let base = match t::tmux(["show-options", "-gqv", "@claude_bar_base_sr"]) {
         Ok(cached) if !cached.is_empty() => cached,
         _ => match t::tmux(["show-options", "-gv", "status-right"]) {
@@ -453,11 +473,19 @@ mod tests {
         }
         // Blocked must be tested first: it is the state the glyph exists for.
         assert!(w.find("needs-input").unwrap() < w.find("busy").unwrap());
+        // The mono twin: same glyphs, same order, no colour of its own.
+        let m = window_glyph_mono();
+        assert!(balanced(&m), "{m}");
+        for st in [t::State::NeedsInput, t::State::Busy, t::State::Idle] {
+            assert!(m.contains(&format!(" {},", st.glyph())), "{m}");
+        }
+        assert!(!m.contains("#["), "{m}");
         let f = fleet_segment();
         assert!(balanced(&f), "{f}");
         assert!(f.contains(t::State::NeedsInput.glyph()));
         assert!(f.contains("#{W:") && f.contains("#{n:"));
-        assert!(f.contains("#{E:@catppuccin_status_module_text_bg}"));
+        // Text only: the one-block bar fills nothing but the current tab.
+        assert!(!f.contains('\u{2588}') && !f.contains("#[bg="), "{f}");
         // No comma may sit inside a #[..] style: it would split the #{?:}.
         assert!(!f.split("#[").skip(1).any(|d| d.split(']').next().unwrap().contains(',')));
     }

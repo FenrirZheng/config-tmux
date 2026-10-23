@@ -5,7 +5,7 @@
 
 * Summary
 
-cc-beacon is a single Rust binary invoked once per Claude Code hook event (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Notification, Stop, SessionEnd), plus a one-off =install-bar= call at tmux config load. Each event handler reads the hook's JSON payload off stdin, derives a lifecycle state (busy / idle / needs-input) and sometimes a short activity string, and writes them onto the calling pane's tmux options in one batched tmux invocation via tmuxlib. It also maintains a per-pane ticker log under =/tmp/claude-progress/=, rings the pane's tty BEL on Notification only when the human is not already looking at that pane, and on =install-bar= splices two status-bar segments (per-window worst-state glyph, whole-fleet "who needs me") into the user's theme formats idempotently. It is the only writer of the =@claude_state= family of pane options that every other crate reads; it deliberately never touches pane titles, which belong to =talk ping=. Two invariants run through the binary: every code path exits 0 (a hook must never block the agent), and any text derived from tool arguments passes =sanitize_format= before being stamped into a tmux format context.
+cc-beacon is a single Rust binary invoked once per Claude Code hook event (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Notification, Stop, SessionEnd), plus a one-off =install-bar= call at tmux config load. Each event handler reads the hook's JSON payload off stdin, derives a lifecycle state (busy / idle / needs-input) and sometimes a short activity string, and writes them onto the calling pane's tmux options in one batched tmux invocation via tmuxlib. It also maintains a per-pane ticker log under =/tmp/claude-progress/=, rings the pane's tty BEL on Notification only when the human is not already looking at that pane, and on =install-bar= publishes the per-window worst-state glyph as two format options — =@claude_tab_glyph= (coloured, for inactive tabs) and =@claude_tab_glyph_mono= (no colour, for the current tab's filled mauve block; one-block bar since 2026-10-23, formats in claude.conf's bar-format block) — and appends the whole-fleet "who needs me" roster, a red bold ` N` text with no block, to =status-right= idempotently over the cached base =@claude_bar_base_sr=; all three draw their glyphs from tmuxlib's =State::glyph()=. It is the only writer of the =@claude_state= family of pane options that every other crate reads; it deliberately never touches pane titles, which belong to =talk ping=. Two invariants run through the binary: every code path exits 0 (a hook must never block the agent), and any text derived from tool arguments passes =sanitize_format= before being stamped into a tmux format context.
 
 * Crux
 
@@ -58,7 +58,7 @@ fn attn(pane: &str) {
 
 * Sources
 :SOURCES:
-:cc-beacon/src/main.rs: sha256:6e6bb9502485f7a2f9920541b922823f35896c13f1be72a80b020bb21a5b69ee
+:cc-beacon/src/main.rs: sha256:e0b3a891a47f0b5faecafdc6c706cafb539b78cf620335fdd348d3a81963bb24
 :cc-beacon/Cargo.toml: sha256:e7e3ae98f9f9e036d72850a14eb4eeb187d20d9396a42b9f4fbbadbcd8f5bc0c
 :END:
 
