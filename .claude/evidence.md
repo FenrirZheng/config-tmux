@@ -25,6 +25,8 @@ Measurements and user decisions behind this repo's tools and config; cited from 
 | 7 | `less -R ~/.tmux/cheat.txt` in a `-h 68` popup, LANG=en_US.UTF-8 | PUA glyphs print as `<U+F012C>`, the BORDER row wraps and the last sheet line falls off; with `LESSUTFCHARDEF=E000-F8FF:p,F0000-FFFFD:p` the sheet fits, `(END)` shown. Also: `cheat.txt` had 64 lines against a `-h 65` sized for 62 (rows from e9cc877, 651e3db) |
 | 8 | `select-pane -m` twice on one pane; then on another | 1 → 0 (toggle); the mark moves to the other pane |
 | 9 | `run-shell -b -t %0 "echo hello"` | output shown in the pane's view mode (`pane_in_mode=1`) — list-*/show-* rows run from `launch.sh` display their output |
+| 10 | two windows, @1 active: `TMUX=… tmux swap-window`; then window 0 marked, `tmux swap-window -t t:0` | both rc 0, order unchanged (`0:@0 1:@1`) — bare it swaps a window with itself; `-s` defaults to the MARKED window. Reported by the user as "prefix + m -> swap-window 沒有反應" |
+| 11 | `tmux -f /dev/null` server: `rename-window -t @W`; `rename-session -t p` | both rc 1, `too few arguments (need at least 1)` — what Enter on the command row ran. Usages with a word outside every `[…]`: 24 commands on 3.5a. Reported by the user as "prefix + +m -> rename window 不能正常運作" |
 
 User decisions (2026-11-11): trigger key `prefix m` (accepted: it replaces stock `select-pane -m`, the Claude-inbox mark); `prefix M` rebound to `select-pane -m` so marking stays one key; Meson + Ninja for this tool (the cmake directive of 2026-08-27 was sift's); name `cc-main-menu` and options `@cc-main-menu-*`; in-repo tool under `tools/`, not a standalone TPM plugin; theme Catppuccin Mocha; no background build on config load unless `@cc-main-menu-autobuild on`.
 

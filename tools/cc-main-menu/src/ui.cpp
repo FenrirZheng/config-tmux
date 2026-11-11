@@ -253,6 +253,24 @@ UiResult run_ui(const Catalog& catalog, const Context& ctx, const std::string& l
       if (e == Event::Return) {
         const auto* a = selected();
         if (a == nullptr) return true;
+        if (needs_destination(*a)) {
+          // Run bare, source == destination and tmux silently does nothing.
+          line = destination_line_for(*a);
+          line_cursor = static_cast<int>(line.size());
+          mode = 1;
+          status = a->name + " needs a destination: type it after -t (e.g. :2, @5), Enter runs";
+          status_is_error = false;
+          return true;
+        }
+        if (const auto need = required_args(*a); !need.empty()) {
+          // Bare, tmux rejects it: "too few arguments" (e.g. rename-window).
+          line = edit_line_for(*a);
+          line_cursor = static_cast<int>(line.size());
+          mode = 1;
+          status = a->name + " needs " + need + ": type it, Enter runs";
+          status_is_error = false;
+          return true;
+        }
         std::string err;
         if (auto argv = resolve_action(*a, catalog, ctx, err)) {
           finish(std::move(*argv));

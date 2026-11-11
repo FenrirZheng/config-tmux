@@ -18,7 +18,7 @@ the `~/.tmux/tools/` workspace next to the Rust crates and the other C++ tools (
 scripts/build.sh              # release + LTO → ../target/release/cc-main-menu
 scripts/build.sh --asan       # ASan+UBSan    → ../target/release/cc-main-menu-asan
 scripts/build.sh --clean      # wipe the build tree first (combine with --asan)
-bash scripts/verify.sh        # 47 assertions on throwaway tmux servers, ~4 s
+bash scripts/verify.sh        # 59 assertions on throwaway tmux servers, ~4 s
 CC_MAIN_MENU=../target/release/cc-main-menu-asan CCMM_SAN_LOG=<empty dir> bash scripts/verify.sh
 bash ../build-all.sh          # every tool in the workspace (recovery after cargo clean)
 ```
@@ -72,6 +72,14 @@ Load-bearing decisions (each measured on tmux 3.5a; details in
   `ui.cpp` clears ISIG on the first render — not via `screen.Post()`, which FTXUI drops
   before `Loop()` starts — so Ctrl-C is a key that exits 0 (`verify.sh` group 6 checks the
   exit status through a wrapper).
+- **Sources too**: `-s src-window` / `-s src-pane` get the origin, because tmux otherwise
+  takes the *marked* pane (the Claude inbox) as the source. Commands with `-s src-X -t
+  dst-X` of one kind (swap/move/join/link) do nothing bare, so Enter on them opens the
+  argument bar at `NAME -t ` instead of running (`needs_destination()`).
+- **Required arguments**: a command whose usage keeps a word outside every `[…]`
+  (`rename-window … new-name`, `set-option … option`) fails bare with "too few
+  arguments", so Enter opens the argument bar at `NAME ` with a hint
+  (`required_args()`).
 - **`{ … }` in the argument bar** (e.g. Tab on stock `prefix $`) is folded into one
   argument holding the inner commands as a string: as separate argv words tmux rejects
   them ("too many arguments").

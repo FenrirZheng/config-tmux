@@ -82,6 +82,31 @@ targets (=-t dst-pane=, =dst-window=) are never filled.
 Skipped when the user's line already has the flag, alone (=-t=), in a cluster
 (=-ht=) or with its value attached (=-t%3=).
 
+Sources are filled too: =-s src-window= → =-s <window_id>=, =-s src-pane= →
+=-s <pane_id>=. Left out, tmux takes the *marked* pane's window or pane as the
+source when a mark exists — and =prefix M= marks the Claude inbox — else its
+guess at "current" from outside the client. Measured on 3.5a, two windows, @1
+active: bare =swap-window= from the command line exits 0 and changes nothing;
+with window 0 marked, =swap-window -t t:0= also exits 0 and changes nothing.
+
+A command whose usage is =-s src-X … -t dst-X= with the same X (=swap-window=,
+=swap-pane=, =link-window=, =move-window=, =join-pane=, =move-pane=) has no
+useful bare form — source and destination would be the same object. Enter on
+such a row opens the argument bar prefilled with =NAME -t = and a hint instead
+of running (=needs_destination()=; =rows= prints =edit:<line>= for them).
+=break-pane= (src-pane → dst-window) is not in the set: bare, it breaks the
+origin pane out. =verify.sh= groups 5 and 11 pin both.
+
+A command with a required positional argument — its usage still has a word
+once every =[…]= group (nested too) is removed, e.g. =rename-window … new-name=
+— cannot run bare either: tmux rejects =rename-window -t @W= with "too few
+arguments (need at least 1)" (measured 3.5a). Enter on such a row opens the
+argument bar at =NAME = with the hint "NAME needs <args>: type it, Enter runs"
+(=required_args()=; =rows= prints =edit:NAME =). The set is derived from the
+usage, not listed; =verify.sh= group 5 pins the 24 it yields on 3.5a, so a
+tmux upgrade that changes it shows up as a diff, and group 13 renames a window
+end to end.
+
 * Execution: { } blocks in an edited line
 
 Tab on a key whose command has a block (stock =prefix $= is

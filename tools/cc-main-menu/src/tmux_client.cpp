@@ -629,6 +629,48 @@ std::vector<std::string> derived_target_flags(const CommandInfo& cmd,
     out.emplace_back("-c");
     out.push_back(ctx.client);
   }
+  // The source of swap/move/join/link/break. Left out, tmux takes the MARKED
+  // pane's window or pane when one exists — and prefix M marks the Claude inbox —
+  // else its guess at "current" from outside the client (measured 3.5a: with
+  // window 0 marked, `swap-window -t :0` from the command line was a no-op).
+  if (!has_flag(user_args, 's')) {
+    std::string value;
+    if (usage_has(u, "-s src-window"))
+      value = ctx.window;
+    else if (usage_has(u, "-s src-pane"))
+      value = ctx.pane;
+    if (!value.empty()) {
+      out.emplace_back("-s");
+      out.push_back(std::move(value));
+    }
+  }
+  return out;
+}
+
+bool needs_destination(const Action& action) {
+  if (action.kind != Kind::Command) return false;
+  const auto& u = action.usage;
+  return (usage_has(u, "-s src-window") && usage_has(u, "-t dst-window")) ||
+         (usage_has(u, "-s src-pane") && usage_has(u, "-t dst-pane"));
+}
+
+std::string destination_line_for(const Action& action) { return edit_line_for(action) + "-t "; }
+
+std::string required_args(const Action& action) {
+  if (action.kind != Kind::Command) return {};
+  std::string out;
+  int depth = 0;
+  for (const char c : action.usage) {
+    if (c == '[') {
+      ++depth;
+    } else if (c == ']') {
+      if (depth > 0) --depth;
+    } else if (depth == 0) {
+      if (c == ' ' && (out.empty() || out.back() == ' ')) continue;
+      out.push_back(c);
+    }
+  }
+  while (!out.empty() && out.back() == ' ') out.pop_back();
   return out;
 }
 

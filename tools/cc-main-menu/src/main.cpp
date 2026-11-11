@@ -115,10 +115,15 @@ int cmd_rows(const ccmm::Catalog& cat, const ccmm::Context& ctx, std::string_vie
     std::string err;
     const auto argv = ccmm::resolve_action(a, cat, ctx, err);
     const bool cmd = a.kind == ccmm::Kind::Command;
+    // Enter on these opens the argument bar instead of running (see ui.cpp).
+    const std::string what =
+        ccmm::needs_destination(a)       ? "edit:" + ccmm::destination_line_for(a)
+        : !ccmm::required_args(a).empty() ? "edit:" + ccmm::edit_line_for(a)
+        : argv                           ? ccmm::quote_argv(*argv)
+                                         : "!" + err;
     std::cout << (cmd ? "cmd" : "key") << '\t' << (cmd ? a.name : a.note) << '\t'
               << (cmd ? a.alias : ccmm::badge_text(a.table, a.key)) << '\t'
-              << join(a.badges, ",") << '\t'
-              << (argv ? ccmm::quote_argv(*argv) : "!" + err) << '\n';
+              << join(a.badges, ",") << '\t' << what << '\n';
   }
   for (const auto& w : cat.warnings) std::cerr << "cc-main-menu: warning: " << w << '\n';
   return 0;

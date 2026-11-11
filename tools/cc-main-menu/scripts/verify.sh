@@ -88,6 +88,19 @@ check "-c target-client filled from --client" "display-message -t $P0 -c /dev/pt
 check "quoted arg kept whole" "#{pane_current_path}" \
   "$(mm resolve 'split-window -c "#{pane_current_path}"' | tail -1)"
 mm resolve bogus-cmd >/dev/null 2>&1; check "unknown command → exit 1" "1" "$?"
+W0=$(tmux -L $V display-message -p '#{window_id}')
+check "-s src-window filled from the origin" "swap-window -s $W0 -t :2" \
+  "$(mm resolve 'swap-window -t :2' | paste -sd' ')"
+check "user -s wins" "swap-window -s @9 -t :2" "$(mm resolve 'swap-window -s @9 -t :2' | paste -sd' ')"
+check "-s src-pane filled (break-pane)" "break-pane -s $P0" "$(mm resolve break-pane | paste -sd' ')"
+check "src/dst of one kind → Enter opens the bar" "edit:swap-window -t " \
+  "$(mm rows swap-window | head -1 | cut -f5)"
+check "required positional → Enter opens the bar" "edit:rename-window " \
+  "$(mm rows rename-window | head -1 | cut -f5)"
+check "all-optional usage still runs" "kill-window -t $W0" "$(mm rows kill-window | head -1 | cut -f5)"
+check "the commands Enter cannot run bare, no others" \
+  "bind-key confirm-before display-menu find-window if-shell join-pane link-window load-buffer move-pane move-window rename-session rename-window save-buffer send-keys set-buffer set-environment set-hook set-option set-window-option source-file swap-pane swap-window unbind-key wait-for" \
+  "$(mm rows | awk -F'\t' '$5 ~ /^edit:/ {print $2}' | sort | paste -sd' ')"
 check "{ } group folded into one argument" "rename-session %%" \
   "$(mm resolve 'command-prompt -I x { rename-session "%%" }' | tail -1)"
 check "noted key → send-keys -K through the prefix" \
@@ -192,11 +205,31 @@ open_menu; type_q zz-menu; key Enter; closed
 wait_screen 'zzmenu'; check "a noted display-menu key opens its menu" 0 $?
 key 1; check "the menu item ran" 1 "$(wait_eq 1 vt show -gv @menu)"
 
-echo "11. Tab on a stock binding with a { } block (prefix \$)"
+echo "11. swap-window: Enter asks for the destination; the origin is the source"
+A_idx=$(vt display -p -t "$S:^" '#{window_index}'); A_pane=$(vt display -p -t "$S:^" '#{pane_id}')
+B_id=$(vt display -p -t t '#{window_id}')
+[ "$B_id" != "$(vt display -p -t "$S:^" '#{window_id}')" ] && ok "fixture: origin is not the destination window" \
+  || bad "fixture: origin is not the destination window" "two windows" "$B_id"
+vt select-pane -m -t "$A_pane"   # the inbox case: a marked pane in the OTHER window
+open_menu; type_q swap-window; key Enter
+wait_screen 'needs a destination'; check "Enter on swap-window opens the argument bar" 0 $?
+type_q ":$A_idx"; key Enter; closed
+check "origin window took the destination's index (not the marked one)" "$A_idx" \
+  "$(wait_eq "$A_idx" vt display -p -t "$B_id" '#{window_index}')"
+vt select-pane -M
+
+echo "12. Tab on a stock binding with a { } block (prefix \$)"
 open_menu; type_q 'Rename current session'; key Tab; key Enter; closed
 wait_screen '(rename-session)'; check "command-prompt opened from the edited line" 0 $?
 key BSpace; type_q zzname; key Enter
 check "and its { rename-session } ran" zzname "$(wait_eq zzname vt display -p -t "$S" '#{session_name}')"
+
+echo "13. rename-window: Enter asks for the new name, then renames the origin"
+W_org=$(vt display -p -t "$S" '#{window_id}')
+open_menu; type_q rename-window; key Enter
+wait_screen 'needs new-name'; check "Enter on rename-window opens the argument bar" 0 $?
+type_q zzwin; key Enter; closed
+check "origin window renamed" zzwin "$(wait_eq zzwin vt display -p -t "$W_org" '#{window_name}')"
 
 echo
 echo "client $CL — passed $pass, failed $fail"

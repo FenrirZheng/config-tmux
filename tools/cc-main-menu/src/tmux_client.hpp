@@ -154,6 +154,22 @@ std::optional<std::vector<std::string>> resolve_action(const Action& action,
 // What the argument bar is prefilled with on Tab.
 std::string edit_line_for(const Action& action);
 
+// True for a command whose usage is `-s src-X … -t dst-X` with the same X
+// (swap-window, swap-pane, link-window, move-window, join-pane, move-pane):
+// with only the derived -s, source and destination are the same object and
+// tmux succeeds silently doing nothing (measured 3.5a). Enter on such a row
+// opens the argument bar with destination_line_for() instead of running.
+// break-pane (src-pane → dst-window) is false: bare, it is meaningful.
+bool needs_destination(const Action& action);
+std::string destination_line_for(const Action& action);
+
+// The positional arguments a command cannot run without: its usage with every
+// `[…]` group (nested too) removed, trimmed — "new-name" for rename-window,
+// "" when everything is optional or for a Binding. Enter on a row with a
+// non-empty result opens the argument bar at edit_line_for() instead of
+// running: bare, tmux rejects it with "too few arguments" (measured 3.5a).
+std::string required_args(const Action& action);
+
 // Shell-quoted, space-joined — for `rows` output and messages only, never executed.
 std::string quote_argv(std::span<const std::string> argv);
 
