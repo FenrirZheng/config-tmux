@@ -45,6 +45,10 @@ trap 'rm -f "$block" "$fblock"' EXIT
 plain='#{s|^✳ ||:pane_title}'
 # (#{b:} only takes a variable name, so home is a separate test, not #{b:#{s…}}.)
 smart='#{?#{==:#{pane_title},#{host_short}},#{?#{==:#{pane_current_path},#{HOME}},~,#{b:pane_current_path}},#{s|^✳ ||:pane_title}}'
+# A name set with rename-window (prefix , or the prefix m menu) wins over the
+# title: automatic-rename is off then. cc-launch's own `cc:<dir>` names are
+# also fixed, so they are excluded and those tabs keep the title.
+named="#{?#{||:#{automatic-rename},#{m/r:^cc:,#{window_name}}},$smart,#{window_name}}"
 
 case $v in
 original)
@@ -114,7 +118,7 @@ esac
 # (`set -gF`, unconditional), and claude.conf's own composition lines above
 # the markers re-set status-left / status-right.
 if [ "$v" = oneblock ]; then
-  title="#{=14:$smart}"
+  title="#{=14:$named}"
   cat >"$fblock" <<B
 set -g window-status-separator "  "
 set -g window-status-format "#[fg=#9399b2]#I #[fg=#a6adc8]$title#{E:@claude_tab_glyph}#[default]"
