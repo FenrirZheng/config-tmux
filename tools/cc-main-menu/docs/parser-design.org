@@ -1,0 +1,127 @@
+#+title: cc-main-menu — tmux output parsers: boundary conditions
+#+date: 2026-11-11
+
+All observations below were measured on tmux 3.5a (this machine), 2026-11-11.
+
+* list-commands → (name, alias, usage)
+
+** Primary path: let tmux do the splitting
+=list-commands= accepts =-F=, and the three fields exist as formats:
+
+#+begin_src sh
+tmux list-commands -F '#{command_list_name}<TAB>#{command_list_alias}<TAB>#{command_list_usage}'
+#+end_src
+
+Split each line on the *first two* tabs only; everything after the second tab is
+the usage, verbatim. Delimiter is a real tab passed as argv (no shell), not =|=:
+one usage string already contains =|= (probe:
+=tmux list-commands -F '#{command_list_usage}' | grep -c '|'= → 1).
+
+** Fallback: plain =list-commands= text (old tmux without the formats)
+Line shape: =NAME[ (ALIAS)][ USAGE]=.
+
+| case                         | example                        | rule                                                  |
+|------------------------------+--------------------------------+-------------------------------------------------------|
+| alias present                | =split-window (splitw) [-b…]=  | token 2 starts with =(= and ends with =)= → alias     |
+| no alias (13 of 90)          | =choose-buffer [-NrZ] …=       | token 2 starts with =[= or a letter → alias empty      |
+| empty usage                  | =kill-server =                 | trailing space only; usage = "" after trim            |
+| usage begins with a bare arg | =command [args]= style         | anything after name/alias is usage, never re-tokenised |
+| blank / malformed line       | —                              | skip, count it; never abort the whole list             |
+
+Detection: run =-F= first; if exit≠0, or every alias field is empty *and* every
+usage field is empty, fall back to text parsing.
+
+** Invariants checked after parsing
+- name matches =^[a-z][a-z-]*$=; a row that fails is dropped and counted.
+- names are unique; aliases are unique where non-empty.
+- an empty result is an error shown in the UI, not an empty palette.
+
+* list-keys → key badges per command
+
+No =-F= on 3.5a (=command list-keys: unknown flag -F=), so the text form is parsed.
+Line shape: =bind-key [-r] -T TABLE KEY COMMAND…=, columns padded with runs of
+spaces. Notes never appear in this form: a key bound with =-N 'test note'= lists as
+plain =bind-key -T prefix F11 split-window=. Notes need a second call,
+=list-keys -N [-T table]=, whose lines are =KEY  NOTE= (=F11 test note=) — join on
+(table, key) if the UI shows notes.
+
+| case                  | example                                         | rule                                                                 |
+|-----------------------+-------------------------------------------------+----------------------------------------------------------------------|
+| repeat flag           | =bind-key -r -T prefix Up select-pane -U= (17)  | flags before =-T= are optional, in any order                          |
+| escaped key           | =\"=, =\#=, =\$=, =\%=, =\'=, =\;=              | a leading =\= escapes one char; unescape for display                  |
+| command chain         | =select-pane \; send-keys -X …=                 | split on a standalone =\;= token; every link maps back to the key    |
+| brace block           | =command-prompt -I "#S" { rename-session "%%" }= | first word is the command; also record commands inside ={ … }=        |
+| wrapper commands      | =if-shell=, =run-shell=, =confirm-before=        | badge the wrapper; additionally badge quoted inner commands (best effort) |
+| quoted args           | ="…"=, ='…'= with =\"= inside                   | tmux-style tokenizer (quotes + backslash), not =split(' ')=           |
+| alias as command      | a user =bind x splitw=                          | resolve through the alias map from list-commands                      |
+| user-defined key long | =C-M-S-F12=                                     | key token = next token after the table name, any length               |
+
+Table filter: badges come from =prefix= and =root= by default; =copy-mode= /
+=copy-mode-vi= (165 rows, almost all =send-keys -X=) would bury every other badge.
+Display =prefix + KEY= for the prefix table, bare =KEY= for root, and cap badges
+per command (e.g. 3, then =+N=).
+
+* Execution: when to add =-t= (as built)
+
+Derived from the usage string, not a hard-coded table, and inserted *right after
+the command name*: tmux stops option parsing at the first positional argument,
+so a trailing =-t= would be read as an argument.
+
+| usage contains      | add                                                     |
+|---------------------+---------------------------------------------------------|
+| =-t target-pane=    | =-t <pane_id>=                                          |
+| =-t target-window=  | =-t <window_id>=; for =new-window=, =-t <session_id>:=  |
+| =-t target-session= | =-t <session_id>=                                       |
+| =-t target-client=  | =-t <client_name>=                                      |
+| =-c target-client=  | =-c <client_name>=                                      |
+
+Measured: =new-window -t @0= fails with "create window failed: index 0 in use";
+=new-window -t $0:= takes the next free index, like =prefix c=. Destination
+targets (=-t dst-pane=, =dst-window=) are never filled.
+
+Skipped when the user's line already has the flag, alone (=-t=), in a cluster
+(=-ht=) or with its value attached (=-t%3=).
+
+* Execution: { } blocks in an edited line
+
+Tab on a key whose command has a block (stock =prefix $= is
+=command-prompt -I "#S" { rename-session "%%" }=) puts config-file syntax in the
+argument bar. Passed as argv, tmux 3.5a reads each brace as a literal argument:
+=command command-prompt: too many arguments (need at most 1)=. =resolve_line=
+folds every top-level group back into one argument holding the inner commands as
+a string (=rename-session %%=), which is what =command-prompt=, =if-shell= and
+=confirm-before= accept on the command line. =verify.sh= group 11 runs it.
+
+* Execution: noted keys
+
+A noted key is replayed, not re-parsed: =send-keys -K -c CLIENT PREFIX KEY= for
+the prefix table, =send-keys -K -c CLIENT KEY= for root, and
+=switch-client -c CLIENT -T TABLE ; send-keys -K -c CLIENT KEY= for any other
+table. Measured on 3.5a: =send-keys -K -c CLIENT C-b F9= ran a prefix binding,
+and =C-b "= split the pane. The key =;= goes out as =\;=, because a lone =;=
+argument separates commands on the tmux command line (=verify.sh= group 9
+replays =prefix ;=). The prefix comes from =show-options -gv prefix=; =None=
+refuses prefix rows with an error instead of sending a bare key.
+
+=list-keys -N= without =-T= prefixes prefix-table keys with the prefix (=C-b F11=)
+and leaves root keys bare; with =-T TABLE= every line is the bare key, which is
+why the notes are read one table at a time. On a stock server only =prefix=
+carries notes (85 of them), so tmux's own keys appear as menu rows too.
+
+* Execution: popup first, command second
+
+=tmux display-popup= run from a shell blocks until the popup closes (measured:
+returned after 1.51 s for =sleep 1.5=). =launch.sh= relies on that: the binary
+writes the argv NUL-delimited to a temp file and exits 0, the popup closes, and
+only then does =launch.sh= run =tmux "${argv[@]}"=. Commands that need the
+client — =copy-mode=, =choose-tree=, =command-prompt=, a nested popup — get it
+free (=verify.sh= group 7 enters copy-mode this way). A non-zero exit is shown
+with =display-message -c CLIENT -l=, so tmux's error text never reaches a
+format context.
+
+* Untrusted text
+
+Key notes and bound commands from =list-keys= are user-controlled. They are
+rendered only in the FTXUI popup, with C0 controls and DEL replaced by U+FFFD
+(=printable()=), and reach tmux only as argv elements or through
+=display-message -l=. ARCHITECTURE.org's sanitisation section is the rule.

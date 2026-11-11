@@ -65,7 +65,7 @@ fn window_glyph() -> String {
 :SOURCES:
 :tmuxlib/src/lib.rs: sha256:aa90cd2402339acda2a2b53cde334e761371e2ea768ca7ecd4d8f050e94a0d8e
 :cc-beacon/src/main.rs: sha256:e0b3a891a47f0b5faecafdc6c706cafb539b78cf620335fdd348d3a81963bb24
-:ARCHITECTURE.org: sha256:9185a9c310f45c2fd48c36cd73cff626dd2eced6c7bd84ee35ba7543fadd0092
+:ARCHITECTURE.org: sha256:ebb8f0b0bd4512e96964df2726e2e23edba3af820f6cc2ea3ccd42d8b0dd74b1
 :cc-attend/src/main.rs: sha256:aabcff34f87e67799dc35e3531356ddab045e6b86e14868739d6e74a0b3e502a
 :cc-fleet/src/main.rs: sha256:0c3d0250540184ffd02f2d5e475953450186fbb167a5492c05dbd33e96a996d9
 :talk-fleet/src/main.rs: sha256:769f04302901418a526bea4379b39b47fa68729637bf134e67fe5cce751a5a88

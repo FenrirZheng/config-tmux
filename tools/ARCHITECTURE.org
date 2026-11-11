@@ -59,17 +59,30 @@ Two ordering constraints, both load-bearing:
 
 ** Crates
 
-Every crate below is Rust in the =tools/= cargo workspace *except =sift= and
-=pane-jump=*, which are C++ built by cmake. That divergence is a user directive,
-not a technical finding; the cost is a second build system in the bootstrap, and
-it is contained by having cmake write both binaries into =target/release/= next
-to the cargo output so =claude.conf= keeps one path shape for every tool:
+Every crate below is Rust in the =tools/= cargo workspace *except =sift=,
+=pane-jump= and =cc-main-menu=*. =sift= and =pane-jump= are C++ built by cmake
+(user directive for sift, 2026-08-27; pane-jump followed it). =cc-main-menu= is
+C++20 + FTXUI built by *Meson* (user directive in its own spec, 2026-11-11 —
+the cmake directive was sift's, not a rule for every C++ tool); FTXUI is a
+CMake project pulled in through Meson's cmake module. Each divergence is a user
+directive, not a technical finding; the cost is now three build systems in the
+bootstrap, contained the same way each time — every binary lands in
+=target/release/= next to the cargo output, so =claude.conf= keeps one path shape
+for every tool. One command builds all of them, which is also the recovery after
+=cargo clean= (it deletes the cmake and meson binaries too):
+
+#+begin_src sh
+bash ~/.tmux/tools/build-all.sh     # cargo, then sift, pane-jump (cmake), then cc-main-menu (meson)
+#+end_src
+
+The individual steps, as =build-all.sh= runs them:
 
 #+begin_src sh
 cd ~/.tmux/tools
 cargo build --release
 cmake -S sift -B target/cmake-build -DCMAKE_BUILD_TYPE=Release && cmake --build target/cmake-build
 cmake -S pane-jump -B target/cmake-build-pane-jump -DCMAKE_BUILD_TYPE=Release && cmake --build target/cmake-build-pane-jump
+bash cc-main-menu/scripts/build.sh  # meson + ninja; first configure clones FTXUI (network)
 #+end_src
 
 =sift= has no =tmuxlib=. The only pieces it had to re-implement on the C++ side
@@ -93,6 +106,7 @@ through =execvp= with an argv vector, never a shell string.
 | =sift=        | =<pane>= popup TUI / =rows= headless seam      | [[../docs/adr/0005-own-the-interaction-loop-for-regex-search.org][ADR-0005]] · [[../records/2026-08-27-2240-tmux-sift][records/2026-08-27-2240-tmux-sift]] |
 | =pane-jump=   | popup TUI / =rows= / =jump= seams              | [[../docs/adr/0008-own-the-interaction-loop-for-pane-selection.org][ADR-0008]] · [[../runbooks/switch-pane-by-name.md][runbooks/switch-pane-by-name.md]] |
 | =win-order=   | =prefix A= ratatui popup — reorder this session's windows | — (=win-order/src/main.rs= header)                                  |
+| =cc-main-menu= | =prefix m= FTXUI popup / =rows= / =resolve= seams — command palette | — (=cc-main-menu/CLAUDE.md=, =cc-main-menu/docs/parser-design.org=) · [[../.claude/evidence.md::*2026-11-11 cc-main-menu-tmux-measurements][evidence 2026-11-11]] |
 
 =seek= is the one crate whose design doc is not a file in [[../plans/][=plans/=]]: its specification is the wayfinder records directory above — read that map's *Current contract* section, which supersedes the tickets under it.
 
@@ -130,7 +144,8 @@ Anything derived from tool arguments passes through =sanitize_format()= before b
 | =prefix e=             | capture this pane's tail → =@=-file to Claude                         | to-claude |
 | =prefix E=             | full scrollback of this pane → Emacs buffer (overrides spread-layout) | to-emacs  |
 | =prefix M-s=           | snapshot the layout                                                   | cc-layout |
-| =prefix m= / =M=       | mark / unmark the Claude inbox (stock tmux)                           | to-claude |
+| =prefix M=             | mark / unmark the Claude inbox (=select-pane -m=, a toggle)           | to-claude |
+| =prefix m=             | main menu: every tmux command and =-N=-noted key, fuzzy, Enter runs   | cc-main-menu |
 | copy-mode =Y=          | send selection to Claude as one paste                                 | to-claude |
 | =prefix Space=         | copy-mode + incremental search prompt (pure tmux, no binary)          | seek      |
 | =prefix /=             | popup regex search over the scrollback; Enter seats the cursor        | sift      |

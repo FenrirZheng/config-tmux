@@ -1,0 +1,92 @@
+#+TITLE: cc-main-menu
+#+ATLAS_TYPE: subsystem
+#+ATLAS_ID: cc-main-menu
+#+ATLAS_GENERATOR: atlas/1
+
+* Summary
+
+=cc-main-menu= is the command palette on =prefix m=: a C++20 + FTXUI popup listing every tmux command (from =list-commands -F=) and every key bound with =-N "note"= (from =list-keys -N -T <table>=), fuzzy-filtered as you type, with each command's bound keys shown as badges joined back from plain =list-keys= text. It is the workspace's third non-Rust tool and the only one built with *Meson* (FTXUI comes in through Meson's cmake module; =scripts/build.sh=), and unlike every other binding here its key is installed by its own entry script, =cc-main-menu.tmux=, which =claude.conf= runs. The flow has three hops, and the order is the design: the key binds =run-shell=, because =display-popup= does not expand =#{…}= formats; =scripts/launch.sh= opens the popup with the caller's client/session/window/pane as plain argv; the binary writes the chosen tmux argv NUL-delimited to a temp file and exits 0, and only after =display-popup= has returned (it blocks until the popup closes) does =launch.sh= run =tmux "${argv[@]}"= — so =copy-mode=, =choose-tree=, =command-prompt= and nested popups get a free client, and a failure surfaces as a literal =display-message -l=. A command row runs with a =-t=/=-c= flag derived from its usage string, so it acts on the pane the menu was opened from; a noted-key row is replayed as a keystroke (=send-keys -K=), so its formats expand exactly as when the key is pressed. =cc-main-menu rows [QUERY]= and =resolve LINE= are the headless seams, and =scripts/verify.sh= pins the parsers, badge join, ranking, flag derivation and the whole popup-then-run path with 47 assertions on a nested pair of throwaway servers.
+
+* Crux
+
+The target flag is read off the usage string, not a table of commands. The one exception is measured: =new-window -t @id= means "create at that index" and fails, so it gets =$session:= instead:
+
+#+begin_src cpp :file cc-main-menu/src/tmux_client.cpp :lines 571-588
+  if (!has_flag(user_args, 't')) {
+    std::string value;
+    if (usage_has(u, "-t target-pane"))
+      value = ctx.pane;
+    else if (usage_has(u, "-t target-window"))
+      // new-window -t @id means "create AT that index" and fails with
+      // "index N in use"; `$session:` picks the next free index like prefix c.
+      value = cmd.name == "new-window" ? (ctx.session.empty() ? "" : ctx.session + ":")
+                                       : ctx.window;
+    else if (usage_has(u, "-t target-session"))
+      value = ctx.session;
+    else if (usage_has(u, "-t target-client"))
+      value = ctx.client;
+    if (!value.empty()) {
+      out.emplace_back("-t");
+      out.push_back(std::move(value));
+    }
+  }
+#+end_src
+
+A noted key is not re-parsed into a command; it is pressed again on the origin client, through the prefix when it lives in the prefix table:
+
+#+begin_src cpp :file cc-main-menu/src/tmux_client.cpp :lines 633-647
+  // A lone ";" argument separates commands on the tmux command line.
+  const std::string key = action.key == ";" ? "\\;" : action.key;
+  std::vector<std::string> argv;
+  if (action.table == "prefix") {
+    if (catalog.prefix.empty() || catalog.prefix == "None") {
+      error = "the prefix option is None; cannot replay a prefix key";
+      return std::nullopt;
+    }
+    argv = {"send-keys", "-K", "-c", ctx.client, catalog.prefix, key};
+  } else if (action.table == "root") {
+    argv = {"send-keys", "-K", "-c", ctx.client, key};
+  } else {
+    argv = {"switch-client", "-c", ctx.client, "-T", action.table, ";",
+            "send-keys",     "-K", "-c",       ctx.client, key};
+  }
+#+end_src
+
+Popup first, command second — the binary never runs the choice itself:
+
+#+begin_src bash :file cc-main-menu/scripts/launch.sh :lines 29-40
+tmux display-popup -E -c "$client" -t "$pane" -w "$width" -h "$height" \
+  -T ' main menu ' "$cmd" || true
+
+[[ -s $out ]] || exit 0            # cancelled
+mapfile -d '' -t argv < "$out"
+(( ${#argv[@]} )) || exit 0
+
+if ! tmux "${argv[@]}" 2>"$errf"; then
+  msg=$(tr '\n' ' ' < "$errf" | head -c 300)
+  tmux display-message -c "$client" -l "cc-main-menu: ${argv[0]}: ${msg:-failed}"
+fi
+exit 0
+#+end_src
+
+* Links
+
+- uses :: [[file:text-piping.org][text piping]] — not code but a key: =prefix m= was stock =select-pane -m=, the mark that sets to-claude's inbox, so taking it moved inbox marking to =prefix M= (=select-pane -m=, a toggle) in =claude.conf=; the =-N= notes on to-claude's and seek's keys are what make them appear in this menu
+
+* Sources
+:SOURCES:
+:cc-main-menu/src/tmux_client.hpp: sha256:3e34d19af282165fb3d5dc5c63cd9b28b9e4fb80f5c00ac3e23fa44fecf3fd06
+:cc-main-menu/src/tmux_client.cpp: sha256:0d4029ce448bda208ef0e7edb5536047e87053ee6f3c32a61b59c8611dad71d5
+:cc-main-menu/src/fuzzy_filter.cpp: sha256:8d72c2cd47c60b52a5ba6da8d35c599432a0d8fc1f2102cbd7ea1f68d37d152e
+:cc-main-menu/src/ui.cpp: sha256:ced7bd1b1337fb44b989335a0a35e640bdcd1c8b8c4c8f7df699d39d3aa5f937
+:cc-main-menu/src/main.cpp: sha256:f59d4a7ab6b227e46fc40428993c3c396b34cbfcdb7ae30747e738224ccbb12e
+:cc-main-menu/scripts/launch.sh: sha256:e94ca194fc7b6c6d30e30022043af0bb1f88f5eac7a87e4d4229f45a19f21d3f
+:cc-main-menu/cc-main-menu.tmux: sha256:9194a236a5f214c2af9cd9408df76edd94f790df36d9cdd6e0a7441f8f28be26
+:cc-main-menu/scripts/verify.sh: sha256:4bb91c7677f608417ffbe504520dae77022681b876f842280bfb494636b2afbd
+:cc-main-menu/meson.build: sha256:f81b25538d9eca3c09d37228727fdca8899f6fc52b98813724506ee280b8e064
+:END:
+
+* Notes
+
+- Parser edge cases and the tmux 3.5a measurements behind them: =cc-main-menu/docs/parser-design.org=. Build, options and test commands: =cc-main-menu/CLAUDE.md=.
+- Badges skip the =copy-mode= / =copy-mode-vi= tables (165 =send-keys -X= rows), mouse/click/drag keys, and the items inside =display-menu= blocks — a menu's items are choices, not what its key does.

@@ -3,7 +3,7 @@
 
 This repo has an atlas at `tools/atlas/` — an org-file context graph explaining
 the toolset (`tools/`) node by node — eleven Rust crates plus `sift` and
-`pane-jump`, both C++. Before exploring that source, read
+`pane-jump` (C++, cmake) and `cc-main-menu` (C++ + FTXUI, Meson). Before exploring that source, read
 `tools/atlas/index.org` and the nodes it lists; follow their typed links
 instead of re-deriving structure.
 

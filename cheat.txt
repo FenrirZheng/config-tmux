@@ -35,8 +35,8 @@
                prefix T        tape: record this pane past alt-screen (●REC)
                prefix M-s      snapshot the layout (restore: cc-layout restore)
 
-  → CLAUDE     prefix m        mark a Claude pane as inbox (border ▶ CLAUDE)
-               send it stuff   prefix M clears the mark
+  → CLAUDE     prefix M        mark a Claude pane as inbox (border ▶ CLAUDE)
+               send it stuff   press M again to unmark; on another pane it moves
                copy-mode W     grab the token, copy AND send it — an @-ref
                                for paths, a plain paste otherwise
                copy-mode L     grab the line, copy AND send it verbatim
@@ -49,7 +49,8 @@
   BORDER       󰄬 green done    󰔟 yellow working     red needs your input
                ▶ CLAUDE = inbox   ●REC = recording   [name] = talk-fleet role
 
-  OTHER        prefix P        popup shell in this pane's directory
+  OTHER        prefix m        main menu: type to find any command or noted key
+               prefix P        popup shell in this pane's directory
                prefix d        detach          prefix :   command prompt
                prefix M-?      FULL key list (this sheet is the curated 10%)
 

@@ -1,0 +1,7 @@
+# Meson pulls the FTXUI checkout here; only the .wrap pin is source.
+/subprojects/*
+!/subprojects/*.wrap
+# Ad-hoc local build dirs (scripts/build.sh builds under ../target/, already ignored).
+/builddir/
+/compile_commands.json
+/.cache/

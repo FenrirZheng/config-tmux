@@ -1,0 +1,2 @@
+option('linker', type: 'combo', choices: ['auto', 'mold', 'lld', 'default'], value: 'auto',
+  description: 'auto = mold if usable, else lld, else the toolchain default')
