@@ -1,0 +1,56 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "release",
+      "displayName": "Release (Ninja + ccache + PCH)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../target/cmake-build-tmux-zhuyin",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "TMUX_ZHUYIN_ENABLE_PCH": "ON",
+        "TMUX_ZHUYIN_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug (Ninja + ccache + PCH)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../target/cmake-build-tmux-zhuyin-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "TMUX_ZHUYIN_ENABLE_PCH": "ON",
+        "TMUX_ZHUYIN_BUILD_TESTS": "ON",
+        "TMUX_ZHUYIN_OUTPUT_DIR": "${sourceDir}/../target/debug"
+      }
+    },
+    {
+      "name": "asan",
+      "displayName": "ASan/UBSan (Ninja + ccache)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../target/cmake-build-tmux-zhuyin-asan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined",
+        "TMUX_ZHUYIN_ENABLE_PCH": "ON",
+        "TMUX_ZHUYIN_BUILD_TESTS": "ON",
+        "TMUX_ZHUYIN_OUTPUT_DIR": "${sourceDir}/../target/asan"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug"
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan"
+    }
+  ]
+}

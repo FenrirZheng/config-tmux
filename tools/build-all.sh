@@ -40,6 +40,7 @@ step cargo        cargo build --release
 step sift         cmake_tool sift target/cmake-build
 step pane-jump    cmake_tool pane-jump target/cmake-build-pane-jump
 step cc-main-menu bash cc-main-menu/scripts/build.sh
+step tmux-zhuyin  bash tmux-zhuyin/scripts/build.sh
 
 if (( ${#failed[@]} )); then
   printf '\nbuild-all: FAILED: %s\n' "${failed[*]}" >&2
