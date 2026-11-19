@@ -26,6 +26,9 @@ pub const OPT_TASK: &str = "@claude_task";
 pub const OPT_SESSION_ID: &str = "@claude_session_id";
 /// Per-pane: human-assigned role name (`talk-fleet role set`).
 pub const OPT_ROLE: &str = "@claude_role";
+/// Per-pane: agent runtime kind (`claude` | `agy`). Used to ignore stale
+/// `@claude_state` when an agent without a SessionEnd hook (e.g. `agy`) exits.
+pub const OPT_AGENT: &str = "@claude_agent";
 
 // There is deliberately no per-window rollup option. tmux can compute one live
 // inside a format — `#{P:}` loops a window's panes, and `#{W:}` loops a
@@ -226,7 +229,7 @@ pub fn get_window_opt(target: &str, key: &str) -> String {
 // ---------------------------------------------------------------------------
 
 /// Field order of [`PANE_FORMAT`]; keep the two in sync.
-pub const PANE_FORMAT: &str = "#{pane_id}\t#{session_name}\t#{window_index}\t#{pane_index}\t#{window_id}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_title}\t#{@claude_state}\t#{@claude_since}\t#{@claude_activity}\t#{@claude_task}\t#{@claude_session_id}\t#{@claude_role}\t#{pane_marked}\t#{pane_pipe}\t#{window_active}\t#{pane_active}";
+pub const PANE_FORMAT: &str = "#{pane_id}\t#{session_name}\t#{window_index}\t#{pane_index}\t#{window_id}\t#{pane_current_command}\t#{pane_current_path}\t#{pane_title}\t#{@claude_state}\t#{@claude_since}\t#{@claude_activity}\t#{@claude_task}\t#{@claude_session_id}\t#{@claude_role}\t#{pane_marked}\t#{pane_pipe}\t#{window_active}\t#{pane_active}\t#{@claude_agent}";
 
 #[derive(Debug, Clone, Default)]
 pub struct Pane {
@@ -248,6 +251,7 @@ pub struct Pane {
     pub piped: bool,
     pub window_active: bool,
     pub pane_active: bool,
+    pub agent: String,
 }
 
 impl Pane {
@@ -275,6 +279,7 @@ impl Pane {
             piped: f[15] == "1",
             window_active: f[16] == "1",
             pane_active: f[17] == "1",
+            agent: f.get(18).copied().unwrap_or("").to_string(),
         })
     }
 
@@ -283,11 +288,20 @@ impl Pane {
         format!("{}:{}.{}", self.session, self.window_index, self.pane_index)
     }
 
+    /// True when `@claude_agent` is `agy` but the foreground command is no
+    /// longer `agy` (because `agy` has no SessionEnd hook to clear pane state).
+    pub fn is_stale_agy(&self) -> bool {
+        self.agent == "agy" && self.command != "agy"
+    }
+
     /// Beacon state if a hook stamped one, else inferred from the pane title.
     ///
     /// The title heuristic is the fallback for panes whose Claude started
     /// before the beacon hooks were wired; it mirrors `talk ping`.
     pub fn state(&self) -> State {
+        if self.is_stale_agy() {
+            return State::Unknown;
+        }
         let stamped = State::parse(&self.state_raw);
         if stamped != State::Unknown {
             return stamped;
@@ -295,8 +309,11 @@ impl Pane {
         title_state(&self.title)
     }
 
-    /// Whether this looks like a Claude Code pane at all.
+    /// Whether this looks like a Claude Code / agy agent pane at all.
     pub fn is_claude(&self) -> bool {
+        if self.is_stale_agy() {
+            return false;
+        }
         if !self.state_raw.is_empty() || !self.session_id.is_empty() {
             return true;
         }
@@ -575,6 +592,40 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(p.state(), State::NeedsInput);
+    }
+
+    #[test]
+    fn stale_agy_pane_is_ignored_after_exit() {
+        let running = Pane {
+            command: "agy".into(),
+            agent: "agy".into(),
+            state_raw: "busy".into(),
+            ..Default::default()
+        };
+        assert!(!running.is_stale_agy());
+        assert_eq!(running.state(), State::Busy);
+        assert!(running.is_claude());
+
+        let exited = Pane {
+            command: "bash".into(),
+            agent: "agy".into(),
+            state_raw: "idle".into(),
+            ..Default::default()
+        };
+        assert!(exited.is_stale_agy());
+        assert_eq!(exited.state(), State::Unknown);
+        assert!(!exited.is_claude());
+
+        // Claude panes (agent="" or "claude") are not gated on command name.
+        let claude = Pane {
+            command: "node".into(),
+            agent: "claude".into(),
+            state_raw: "idle".into(),
+            ..Default::default()
+        };
+        assert!(!claude.is_stale_agy());
+        assert_eq!(claude.state(), State::Idle);
+        assert!(claude.is_claude());
     }
 
     #[test]

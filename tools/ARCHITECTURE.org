@@ -30,6 +30,8 @@ Four plans each specify their own hook script with the same name and different e
 | =Stop=               | =idle=           | state → idle, clear activity, write =── idle ──= ticker divider                 |
 | =SessionEnd=         | =clear=          | unset all =@claude_*= pane options                                              |
 
+Antigravity CLI (=agy=) hooks in =~/.gemini/config/hooks.json= share the same binary via =cc-beacon agy <event>= (=session-start=, =pre-invocation=, =ask-question=, =post-tool=, =stop=) and always emit valid JSON on stdout (={}= or ={"decision":"allow"}=). Because =agy= has no =SessionEnd= hook, =cc-beacon agy= stamps =@claude_agent=agy=; =tmux-bar=, =pane-border-format=, and =tmuxlib= ignore =@claude_state= whenever =@claude_agent=agy= and =pane_current_command != agy=.
+
 Every branch exits 0 unconditionally. A hook that fails must never block an agent.
 
 *Pane titles are never written.* The layout-resurrect plan wanted =select-pane -T <slug>=, but =talk ping= reads =#{pane_title}= to decide busy/idle — writing it would break inter-agent messaging for every plan at once. The slug lives in =@claude_task= and renders on the border instead.
@@ -123,7 +125,7 @@ Owned by =cc-beacon= unless noted. Consumers must tolerate every one being empty
 | =@claude_session_id=  | UUID                               | cc-beacon  | cc-layout (=claude --resume=)            |
 | =@claude_role=        | role name                          | talk-fleet | border, talk-fleet                       |
 
-There is deliberately *no* per-window rollup option. tmux computes it live: =#{P:}= loops a window's panes and =#{W:}= loops a session's windows, so the status bar derives "does this window hold a blocked agent" straight from =@claude_state=. =cc-beacon install-bar= publishes that per-window rollup as the global format option =@claude_tab_glyph=, which tmux.conf's =@catppuccin_window_*_text= embeds with =#{E:}= so the glyph sits inside the tab block; the fleet roster is appended to =status-right= over the cached theme value =@claude_bar_base_sr=. Storing it would cost two extra tmux round-trips on every tool call and could go stale when a pane moved between windows.
+There is deliberately *no* per-window rollup option. tmux computes it live: =#{P:}= loops a window's panes and =#{W:}= loops a session's windows, so the status bar derives "does this window hold a blocked agent" straight from =@claude_state=. =tools/tmux-bar apply= publishes that per-window rollup as the global format options =@claude_tab_glyph= / =@claude_tab_glyph_mono= (embedded in =window-status-*= via =#{E:}=) and composes the fleet roster directly into =status-right=. Storing it would cost two extra tmux round-trips on every tool call and could go stale when a pane moved between windows.
 
 One trap worth knowing before editing those formats: *=#{P:A,B}= takes two formats* — =A= for the active pane, =B= for the others — so the same format must be written twice to visit every pane. =#{P:#{@claude_state},}= looks right and silently reports one pane, which hides exactly the case the glyphs exist for (a blocked agent behind an active sibling). Measured on this machine: batching the beacon's writes into one tmux invocation and dropping the stored rollup took the per-tool-call hook from 21 ms to 4 ms.
 

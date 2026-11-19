@@ -6,7 +6,7 @@
 # Four build systems' worth of output share target/release/ so claude.conf keeps
 # one path shape:
 #   cargo  the Rust workspace (every crate in Cargo.toml)
-#   cmake  sift, pane-jump          (C++; generator-less form, no ninja needed)
+#   cmake  sift, pane-jump, tmux-bar (C++; generator-less form, no ninja needed)
 #   meson  cc-main-menu             (C++ + FTXUI; needs meson, ninja, network on
 #                                    the first configure for the FTXUI wrap)
 #
@@ -32,13 +32,14 @@ step() { # step NAME CMD...
   (( keep_going )) || { printf '\nbuild-all: %s FAILED\n' "$1" >&2; exit 1; }
 }
 
-cmake_tool() { # cmake_tool DIR BUILDDIR
-  cmake -S "$1" -B "$2" -DCMAKE_BUILD_TYPE=Release && cmake --build "$2"
+cmake_tool() { # cmake_tool DIR BUILDDIR [EXTRA_CMAKE_ARGS...]
+  cmake -S "$1" -B "$2" -DCMAKE_BUILD_TYPE=Release "${@:3}" && cmake --build "$2"
 }
 
 step cargo        cargo build --release
 step sift         cmake_tool sift target/cmake-build
 step pane-jump    cmake_tool pane-jump target/cmake-build-pane-jump
+step tmux-bar     cmake_tool tmux-bar target/cmake-build-tmux-bar -DCMAKE_CXX_COMPILER=clang++
 step cc-main-menu bash cc-main-menu/scripts/build.sh
 step tmux-zhuyin  bash tmux-zhuyin/scripts/build.sh
 

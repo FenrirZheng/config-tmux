@@ -1,12 +1,15 @@
-//! `cc-beacon <event>` — mirrors a Claude Code session's lifecycle into tmux
-//! pane options so every other tool in this workspace can see it.
+//! `cc-beacon <event>` / `cc-beacon agy <event>` — mirrors a Claude Code or
+//! Antigravity CLI (`agy`) session's lifecycle into tmux pane options so every
+//! other tool in this workspace can see it.
 //!
-//! Wired into seven hook events in `~/.claude/settings.json`; see
+//! Wired into seven Claude Code hook events in `~/.claude/settings.json` and
+//! five `agy` hook events in `~/.gemini/config/hooks.json`; see
 //! [ARCHITECTURE.org](../ARCHITECTURE.org) for the event table. This is the only
 //! writer of `@claude_state` and friends.
 //!
 //! Two invariants, both load-bearing:
-//!   * every path exits 0 — a hook that fails must never block the agent;
+//!   * every path exits 0 (and `agy` mode always prints valid JSON on stdout) —
+//!     a hook that fails must never block the agent;
 //!   * pane *titles* are never touched — `talk ping` owns them.
 
 use std::fs::{self, OpenOptions};
@@ -27,9 +30,9 @@ fn run() {
         None => return,
     };
 
-    // Not a hook event: called once from claude.conf at config load.
-    if event == "install-bar" {
-        install_bar();
+    if event == "agy" {
+        let sub = std::env::args().nth(2).unwrap_or_default();
+        run_agy(&sub);
         return;
     }
 
@@ -55,11 +58,42 @@ fn run() {
     }
 }
 
+/// Handle Antigravity CLI (`agy`) lifecycle hooks.
+///
+/// `agy` requires every hook command to print a JSON object on stdout, even
+/// when running outside tmux. We therefore always emit the contract response
+/// before returning.
+fn run_agy(event: &str) {
+    let stdout_json = agy_stdout_response(event);
+    let payload = t::read_hook_json();
+
+    if let Some(pane) = t::current_pane() {
+        match event {
+            "session-start" => agy_session_start(&pane, &payload),
+            "pre-invocation" => agy_pre_invocation(&pane, &payload),
+            "ask-question" => agy_ask_question(&pane),
+            "post-tool" => agy_post_tool(&pane, &payload),
+            "stop" => agy_stop(&pane, &payload),
+            _ => {}
+        }
+    }
+
+    println!("{stdout_json}");
+}
+
+fn agy_stdout_response(event: &str) -> &'static str {
+    match event {
+        "ask-question" | "stop" => r#"{"decision":"allow"}"#,
+        _ => "{}",
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Event handlers
 // ---------------------------------------------------------------------------
 
 fn session_start(pane: &str, payload: &serde_json::Value) {
+    t::set_pane_opt(pane, t::OPT_AGENT, "claude");
     let sid = t::json_first(payload, &["session_id"]);
     if !sid.is_empty() {
         t::set_pane_opt(pane, t::OPT_SESSION_ID, &sid);
@@ -138,6 +172,7 @@ fn clear(pane: &str) {
         t::OPT_ACTIVITY,
         t::OPT_TASK,
         t::OPT_SESSION_ID,
+        t::OPT_AGENT,
     ]
     .iter()
     .map(|opt| {
@@ -152,6 +187,137 @@ fn clear(pane: &str) {
     .collect();
     commands.push(vec!["refresh-client".to_string(), "-S".to_string()]);
     t::tmux_batch(&commands);
+}
+
+// ---------------------------------------------------------------------------
+// Antigravity CLI (`agy`) event handlers
+// ---------------------------------------------------------------------------
+
+fn agy_session_start(pane: &str, payload: &serde_json::Value) {
+    let mut commands = vec![
+        set_pane(pane, t::OPT_AGENT, "agy"),
+        set_pane(pane, t::OPT_STATE, t::State::Idle.as_str()),
+        set_pane(pane, t::OPT_SINCE, &t::now_epoch().to_string()),
+        set_pane(pane, t::OPT_ACTIVITY, ""),
+    ];
+    let sid = t::json_first(payload, &["conversationId"]);
+    if !sid.is_empty() {
+        commands.push(set_pane(pane, t::OPT_SESSION_ID, &t::sanitize_format(&sid)));
+    }
+    commands.push(vec!["refresh-client".to_string(), "-S".to_string()]);
+    t::tmux_batch(&commands);
+}
+
+fn agy_pre_invocation(pane: &str, payload: &serde_json::Value) {
+    let mut commands = vec![
+        set_pane(pane, t::OPT_AGENT, "agy"),
+        set_pane(pane, t::OPT_STATE, t::State::Busy.as_str()),
+        set_pane(pane, t::OPT_SINCE, &t::now_epoch().to_string()),
+    ];
+    if t::get_pane_opt(pane, t::OPT_TASK).is_empty() {
+        let text = t::json_first(payload, &["lastUserInput"]);
+        if !is_peer_traffic(&text) {
+            let slug = t::slugify(&text, 4, 32);
+            if !slug.is_empty() {
+                commands.push(set_pane(pane, t::OPT_TASK, &t::sanitize_format(&slug)));
+            }
+        }
+    }
+    commands.push(vec!["refresh-client".to_string(), "-S".to_string()]);
+    t::tmux_batch(&commands);
+}
+
+fn agy_ask_question(pane: &str) {
+    let commands = vec![
+        set_pane(pane, t::OPT_AGENT, "agy"),
+        set_pane(pane, t::OPT_STATE, t::State::NeedsInput.as_str()),
+        set_pane(pane, t::OPT_SINCE, &t::now_epoch().to_string()),
+        set_pane(pane, t::OPT_ACTIVITY, "ask_question"),
+        vec!["refresh-client".to_string(), "-S".to_string()],
+    ];
+    t::tmux_batch(&commands);
+    if !is_on_screen(pane) {
+        ring_bell(pane);
+    }
+}
+
+fn agy_post_tool(pane: &str, payload: &serde_json::Value) {
+    let short = agy_tool_summary(payload, 48);
+    let commands = vec![
+        set_pane(pane, t::OPT_AGENT, "agy"),
+        set_pane(pane, t::OPT_STATE, t::State::Busy.as_str()),
+        set_pane(pane, t::OPT_SINCE, &t::now_epoch().to_string()),
+        set_pane(pane, t::OPT_ACTIVITY, &short),
+        vec!["refresh-client".to_string(), "-S".to_string()],
+    ];
+    t::tmux_batch(&commands);
+
+    let line = agy_tool_summary(payload, 90);
+    if !line.is_empty() {
+        append_ticker(pane, &format!("{} {}", clock(), line));
+    }
+}
+
+fn agy_stop(pane: &str, payload: &serde_json::Value) {
+    if agy_stop_is_error(payload) {
+        let commands = vec![
+            set_pane(pane, t::OPT_AGENT, "agy"),
+            set_pane(pane, t::OPT_STATE, t::State::NeedsInput.as_str()),
+            set_pane(pane, t::OPT_SINCE, &t::now_epoch().to_string()),
+            set_pane(pane, t::OPT_ACTIVITY, "error"),
+            vec!["refresh-client".to_string(), "-S".to_string()],
+        ];
+        t::tmux_batch(&commands);
+        append_ticker(pane, &format!("{} ── error ──", clock()));
+        if !is_on_screen(pane) {
+            ring_bell(pane);
+        }
+        return;
+    }
+
+    let commands = vec![
+        set_pane(pane, t::OPT_AGENT, "agy"),
+        set_pane(pane, t::OPT_STATE, t::State::Idle.as_str()),
+        set_pane(pane, t::OPT_SINCE, &t::now_epoch().to_string()),
+        set_pane(pane, t::OPT_ACTIVITY, ""),
+        vec!["refresh-client".to_string(), "-S".to_string()],
+    ];
+    t::tmux_batch(&commands);
+    append_ticker(pane, &format!("{} ── idle ──", clock()));
+}
+
+fn agy_stop_is_error(payload: &serde_json::Value) -> bool {
+    let reason = t::json_first(payload, &["terminationReason"]);
+    if reason == "ERROR" {
+        return true;
+    }
+    !t::json_first(payload, &["error"]).is_empty()
+}
+
+/// `run_command npm test` — `agy` camelCase toolCall name plus its key arg.
+fn agy_tool_summary(payload: &serde_json::Value, max: usize) -> String {
+    let tool = t::json_first(payload, &["toolCall.name"]);
+    if tool.is_empty() {
+        return String::new();
+    }
+    let arg = t::json_first(
+        payload,
+        &[
+            "toolCall.args.CommandLine",
+            "toolCall.args.Path",
+            "toolCall.args.Query",
+            "toolCall.args.query",
+            "toolCall.args.Description",
+            "toolCall.args.Prompt",
+            "toolCall.args.toolSummary",
+        ],
+    );
+    let joined = if arg.is_empty() {
+        tool
+    } else {
+        format!("{tool} {arg}")
+    };
+    t::truncate(&t::sanitize_format(&joined), max)
 }
 
 // ---------------------------------------------------------------------------
@@ -189,127 +355,6 @@ fn set_pane(pane: &str, key: &str, value: &str) -> Vec<String> {
         key.into(),
         value.into(),
     ]
-}
-
-// ---------------------------------------------------------------------------
-// Status bar
-// ---------------------------------------------------------------------------
-
-// Both formats below join every pane state in a window and substring-match the
-// result, computing the rollup live instead of storing it.
-//
-// `#{P:A,B}` takes TWO formats — `A` for the window's active pane, `B` for the
-// rest — so the same format has to be passed twice to visit every pane. The
-// obvious-looking `#{P:#{@claude_state},}` reads that trailing comma as the
-// separator and reports one pane only, silently missing a blocked agent sitting
-// behind an active sibling. That is the exact case these glyphs exist to catch,
-// so the duplication is load-bearing. Verified on tmux 3.5a.
-
-/// Does any pane of the window in scope hold `state`? A tmux condition.
-fn any_pane(state: &str) -> String {
-    format!("#{{m:*{state}*,#{{P:#{{@claude_state}}|,#{{@claude_state}}|}}}}")
-}
-
-/// Worst state across a window's panes, a space plus the glyph, or empty;
-/// the theme's window right separator supplies the space after it.
-/// Published as `@claude_tab_glyph` for the theme's window text to embed, so
-/// it sits INSIDE the tab block rather than after its closing separator.
-fn window_glyph() -> String {
-    let (n, b, i) = (
-        t::State::NeedsInput.glyph(),
-        t::State::Busy.glyph(),
-        t::State::Idle.glyph(),
-    );
-    format!(
-        "#{{?{},#[fg=#f38ba8]#[bold] {n},#{{?{},#[fg=#f9e2af] {b},#{{?{},#[fg=#a6e3a1] {i},}}}}}}#[nobold]",
-        any_pane("needs-input"),
-        any_pane("busy"),
-        any_pane("idle"),
-    )
-}
-
-/// `window_glyph()` without its colour directives, published as
-/// `@claude_tab_glyph_mono` for the CURRENT tab: that tab is the bar's one
-/// filled block (mauve, dark text — the "one block" bar of
-/// records/2026-10-23-tmux-bar-polish/), and a red or yellow glyph on mauve
-/// is unreadable, so the glyph inherits the block's foreground instead.
-fn window_glyph_mono() -> String {
-    let (n, b, i) = (
-        t::State::NeedsInput.glyph(),
-        t::State::Busy.glyph(),
-        t::State::Idle.glyph(),
-    );
-    format!(
-        "#{{?{}, {n},#{{?{}, {b},#{{?{}, {i},}}}}}}",
-        any_pane("needs-input"),
-        any_pane("busy"),
-        any_pane("idle"),
-    )
-}
-
-/// The "who needs me" answer, readable from any window: a red bold
-/// ` N` counting the windows that hold a blocked agent, absent when the
-/// count is 0. Text, not a block: on the one-block bar only the current tab
-/// is filled, and an alert is carried by colour alone. The tabs already mark
-/// WHICH windows; repeating a bell per window here was visual noise. `#{W:}`
-/// loops windows, `#{P:}` their panes, and `#{n:}` takes the length of the
-/// one-`x`-per-blocked-window string.
-///
-/// Styles are separate `#[..]` directives: a comma inside `#[fg=a,bg=b]` would
-/// be read as the `#{?:}` separator.
-fn fleet_segment() -> String {
-    let blocked = format!("#{{W:#{{?{},x,}}}}", any_pane("needs-input"));
-    format!(
-        "#{{?{blocked},#[fg=#f38ba8]#[bold]{} #{{n:{blocked}}} ,}}#[default]",
-        t::State::NeedsInput.glyph(),
-    )
-}
-
-/// Publish the tab glyphs and splice the fleet roster into the theme's
-/// status-right, idempotently.
-///
-/// `@claude_tab_glyph` / `@claude_tab_glyph_mono` are plain options the
-/// window formats embed with `#{E:…}`; writing them twice is harmless. status-right is
-/// an append, so the theme's own value is cached in `@claude_bar_base_sr` on
-/// first run and every later run recomputes from that cache — sourcing this
-/// config repeatedly (every `tmux source-file`) appends exactly once.
-fn install_bar() {
-    t::tmux_ok(["set-option", "-g", "@claude_tab_glyph", &window_glyph()]);
-    t::tmux_ok(["set-option", "-g", "@claude_tab_glyph_mono", &window_glyph_mono()]);
-    let base = match t::tmux(["show-options", "-gqv", "@claude_bar_base_sr"]) {
-        Ok(cached) if !cached.is_empty() => cached,
-        _ => match t::tmux(["show-options", "-gv", "status-right"]) {
-            Ok(current) => {
-                t::tmux_ok(["set-option", "-g", "@claude_bar_base_sr", &current]);
-                current
-            }
-            Err(_) => return apply_border_rule_to_existing_windows(),
-        },
-    };
-    t::tmux_ok([
-        "set-option",
-        "-g",
-        "status-right",
-        &format!("{base}{}", fleet_segment()),
-    ]);
-    apply_border_rule_to_existing_windows();
-}
-
-/// The border row costs a line of screen, so claude.conf spends it only on
-/// windows that have something to show. That rule lives in a
-/// `window-layout-changed` hook, which by definition does not fire for windows
-/// that already exist — so apply it once to each of them here. Without this,
-/// every single-pane window carries a useless border row until the next time
-/// its layout happens to change.
-fn apply_border_rule_to_existing_windows() {
-    const RULE: &str =
-        "#{?#{==:#{window_panes},1},#{?#{||:#{pane_pipe},#{pane_marked}},top,off},top}";
-    let Ok(windows) = t::tmux(["list-windows", "-a", "-F", "#{window_id}"]) else {
-        return;
-    };
-    for id in windows.lines().filter(|l| !l.is_empty()) {
-        t::tmux_ok(["set-option", "-wF", "-t", id, "pane-border-status", RULE]);
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -447,46 +492,35 @@ mod tests {
         assert!(!is_peer_traffic("look at this:\n\n\n\n### [talk] quoted"));
     }
 
-    /// Brace balance is the failure mode of hand-built tmux formats: one
-    /// missing `}` and tmux prints the raw text into the status bar.
-    fn balanced(f: &str) -> bool {
-        let mut depth = 0i32;
-        for c in f.chars() {
-            match c {
-                '{' => depth += 1,
-                '}' => depth -= 1,
-                _ => {}
-            }
-            if depth < 0 {
-                return false;
-            }
-        }
-        depth == 0
+    #[test]
+    fn agy_tool_summary_parses_camelcase_payload() {
+        let v = json(
+            r#"{"toolCall":{"id":"t1","name":"run_command","args":{"CommandLine":"cargo test"}}}"#,
+        );
+        assert_eq!(agy_tool_summary(&v, 90), "run_command cargo test");
+
+        let v = json(r#"{"toolCall":{"name":"read_file","args":{"Path":"/tmp/foo.rs"}}}"#);
+        assert_eq!(agy_tool_summary(&v, 90), "read_file /tmp/foo.rs");
+
+        let v = json(r#"{"toolCall":{"name":"ask_question","args":{}}}"#);
+        assert_eq!(agy_tool_summary(&v, 90), "ask_question");
     }
 
     #[test]
-    fn bar_formats_are_balanced_and_use_the_shared_glyphs() {
-        let w = window_glyph();
-        assert!(balanced(&w), "{w}");
-        for st in [t::State::NeedsInput, t::State::Busy, t::State::Idle] {
-            assert!(w.contains(&format!(" {},", st.glyph())), "{w}");
-        }
-        // Blocked must be tested first: it is the state the glyph exists for.
-        assert!(w.find("needs-input").unwrap() < w.find("busy").unwrap());
-        // The mono twin: same glyphs, same order, no colour of its own.
-        let m = window_glyph_mono();
-        assert!(balanced(&m), "{m}");
-        for st in [t::State::NeedsInput, t::State::Busy, t::State::Idle] {
-            assert!(m.contains(&format!(" {},", st.glyph())), "{m}");
-        }
-        assert!(!m.contains("#["), "{m}");
-        let f = fleet_segment();
-        assert!(balanced(&f), "{f}");
-        assert!(f.contains(t::State::NeedsInput.glyph()));
-        assert!(f.contains("#{W:") && f.contains("#{n:"));
-        // Text only: the one-block bar fills nothing but the current tab.
-        assert!(!f.contains('\u{2588}') && !f.contains("#[bg="), "{f}");
-        // No comma may sit inside a #[..] style: it would split the #{?:}.
-        assert!(!f.split("#[").skip(1).any(|d| d.split(']').next().unwrap().contains(',')));
+    fn agy_stop_error_detection_and_stdout_contract() {
+        assert!(agy_stop_is_error(&json(r#"{"terminationReason":"ERROR"}"#)));
+        assert!(agy_stop_is_error(&json(r#"{"error":"boom"}"#)));
+        assert!(!agy_stop_is_error(&json(
+            r#"{"terminationReason":"NO_TOOL_CALL","error":""}"#
+        )));
+
+        assert_eq!(agy_stdout_response("session-start"), "{}");
+        assert_eq!(agy_stdout_response("pre-invocation"), "{}");
+        assert_eq!(agy_stdout_response("post-tool"), "{}");
+        assert_eq!(
+            agy_stdout_response("ask-question"),
+            r#"{"decision":"allow"}"#
+        );
+        assert_eq!(agy_stdout_response("stop"), r#"{"decision":"allow"}"#);
     }
 }
