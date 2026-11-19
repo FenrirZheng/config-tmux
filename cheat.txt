@@ -8,7 +8,7 @@
                prefix z        zoom / unzoom          prefix x   kill pane
 
   WINDOWS      prefix c        new                    prefix ,   rename
-               prefix n / p    next / previous        prefix w   pick from tree
+               prefix n / p    next / previous        prefix w   pick window + preview
                prefix A        reorder tabs: n/p pick, N/P move, Enter apply
 
   COPY & GRAB  prefix [        copy mode (leave with q)

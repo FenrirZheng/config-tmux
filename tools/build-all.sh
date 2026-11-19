@@ -40,6 +40,7 @@ step cargo        cargo build --release
 step sift         cmake_tool sift target/cmake-build
 step pane-jump    cmake_tool pane-jump target/cmake-build-pane-jump
 step tmux-bar     cmake_tool tmux-bar target/cmake-build-tmux-bar -DCMAKE_CXX_COMPILER=clang++
+step win-pick     cmake_tool win-pick target/cmake-build-win-pick -DCMAKE_CXX_COMPILER=clang++
 step cc-main-menu bash cc-main-menu/scripts/build.sh
 step tmux-zhuyin  bash tmux-zhuyin/scripts/build.sh
 

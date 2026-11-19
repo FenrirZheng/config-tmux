@@ -109,6 +109,8 @@ through =execvp= with an argv vector, never a shell string.
 | =pane-jump=   | popup TUI / =rows= / =jump= seams              | [[../docs/adr/0008-own-the-interaction-loop-for-pane-selection.org][ADR-0008]] · [[../runbooks/switch-pane-by-name.md][runbooks/switch-pane-by-name.md]] |
 | =win-order=   | =prefix A= ratatui popup — reorder this session's windows | — (=win-order/src/main.rs= header)                                  |
 | =cc-main-menu= | =prefix m= FTXUI popup / =rows= / =resolve= seams — command palette | — (=cc-main-menu/CLAUDE.md=, =cc-main-menu/docs/parser-design.org=) · [[../.claude/evidence.md::*2026-11-11 cc-main-menu-tmux-measurements][evidence 2026-11-11]] |
+| =tmux-bar=    | =apply= / =dump= — C++20 status bar & Tokyo Night theme | — (=tools/tmux-bar/src/bar_spec.hpp=)                                           |
+| =win-pick=    | =prefix w= C++20 + FTXUI window picker with live ANSI preview / =rows= / =jump= | — (=tools/win-pick/src/model.hpp=)                                              |
 
 =seek= is the one crate whose design doc is not a file in [[../plans/][=plans/=]]: its specification is the wayfinder records directory above — read that map's *Current contract* section, which supersedes the tickets under it.
 
